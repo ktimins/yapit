@@ -165,19 +165,28 @@ echo "  Gateway image: ${RUNNING_COMMIT:0:12}"
 # --- Update external workers (Tailscale-connected GPU/CPU boxes) ---
 # Pull-based: workers fetch jobs from Redis. Failure to update one host
 # doesn't affect the gateway — others (and their existing containers)
-# keep working. WORKER_HOSTS is space-separated SSH targets; REDIS_URL
-# must already be set in each host's shell profile.
+# keep working.
+#
+# WORKER_HOSTS is space-separated entries of `host[:svc1,svc2,...]`,
+# where the optional services list selects which services from
+# docker-compose.worker.yml to bring up on that host (default: all four).
+# REDIS_URL is passed inline from this deploy environment.
+#
+# Example: WORKER_HOSTS="pc:kokoro-gpu,yolo-gpu cloudbox:kokoro-cpu"
 if [ -n "${WORKER_HOSTS:-}" ]; then
   log "Updating external workers..."
-  for host in $WORKER_HOSTS; do
-    ssh "$host" '
+  for entry in $WORKER_HOSTS; do
+    host="${entry%%:*}"
+    svcs="${entry#*:}"; [ "$svcs" = "$entry" ] && svcs=""
+    svcs="${svcs//,/ }"
+    ssh "$host" "REDIS_URL='$REDIS_URL' bash -s" <<EOF && echo "  ✓ $host updated" || echo "  ✗ $host update failed (continuing)"
       set -e
       rm -rf /tmp/yapit-worker
       git clone --depth=1 https://github.com/yapit-tts/yapit /tmp/yapit-worker >/dev/null
       cd /tmp/yapit-worker
-      docker compose -f docker-compose.worker.yml pull
-      docker compose -f docker-compose.worker.yml up -d
-    ' && echo "  ✓ $host updated" || echo "  ✗ $host update failed (continuing)"
+      docker compose -f docker-compose.worker.yml pull $svcs
+      docker compose -f docker-compose.worker.yml up -d $svcs
+EOF
   done
 fi
 
