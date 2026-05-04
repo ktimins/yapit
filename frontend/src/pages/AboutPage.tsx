@@ -1,7 +1,16 @@
-import { Link } from "react-router";
+import { useEffect } from "react";
+import { Link, useLocation } from "react-router";
 import { Github, Headphones, Globe, BookOpen, Mic } from "lucide-react";
 
 const AboutPage = () => {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash) {
+      const el = document.getElementById(hash.slice(1));
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [hash]);
+
   return (
     <div className="container max-w-4xl mx-auto py-8 px-6">
       <div className="flex items-start justify-between mb-10">
@@ -123,7 +132,7 @@ const AboutPage = () => {
         </div>
 
         {/* Imprint (ECG §5, MedienG §25) */}
-        <div className="text-sm text-muted-foreground">
+        <div id="imprint" className="text-sm text-muted-foreground scroll-mt-8">
           <h3 className="font-medium text-foreground mb-2">Imprint</h3>
           <p>Maximilian Wolf</p>
           <p>Carl Moll Gasse 8, 2301 Oberhausen, Austria</p>
