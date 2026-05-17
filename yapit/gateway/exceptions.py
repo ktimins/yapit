@@ -48,11 +48,12 @@ class UsageLimitExceededError(APIError):
         *,
         message: str | None = None,
     ):
-        remaining = max(0, limit - current)
-        super().__init__(
-            message
-            or f"Usage limit exceeded for {usage_type}: limit {limit}, used {current}, requested {requested}, remaining {remaining}"
-        )
+        label = {
+            "ocr_tokens": "OCR tokens",
+            "server_kokoro": "TTS characters",
+            "premium_voice": "premium voice characters",
+        }.get(usage_type, usage_type)
+        super().__init__(message or f"Out of {label} — this needs {requested:,}, you have {max(0, limit):,} available.")
         self.usage_type = usage_type
         self.limit = limit
         self.current = current

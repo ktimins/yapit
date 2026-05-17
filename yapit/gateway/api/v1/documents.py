@@ -67,7 +67,7 @@ from yapit.gateway.document.types import (
 )
 from yapit.gateway.document.website import extract_website_content
 from yapit.gateway.domain_models import Document, DocumentMetadata, UsageType, UserPreferences, UserSubscription
-from yapit.gateway.exceptions import ResourceNotFoundError
+from yapit.gateway.exceptions import APIError, ResourceNotFoundError
 from yapit.gateway.metrics import log_error, log_event
 from yapit.gateway.rate_limit import limiter
 from yapit.gateway.reservations import create_reservation, release_reservation
@@ -1133,6 +1133,21 @@ async def _run_extraction(
                     "failed_pages": extraction_result.failed_pages,
                 }
             ),
+            ex=ASYNC_EXTRACTION_RESULT_TTL,
+        )
+    except APIError as e:
+        ext_log.warning(f"Extraction rejected: {e}")
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        await log_event(
+            "document_extraction_error",
+            processor_slug=processor_slug,
+            duration_ms=duration_ms,
+            user_id=user_id,
+            data={"error": str(e), "content_type": content_type, "error_type": type(e).__name__},
+        )
+        await redis.set(
+            result_key,
+            json.dumps({"error": str(e)}),
             ex=ASYNC_EXTRACTION_RESULT_TTL,
         )
     except Exception as e:
