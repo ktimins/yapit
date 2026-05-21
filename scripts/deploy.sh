@@ -170,7 +170,8 @@ echo "  Gateway image: ${RUNNING_COMMIT:0:12}"
 # WORKER_HOSTS is space-separated entries of `host[:svc1,svc2,...]`,
 # where the optional services list selects which services from
 # docker-compose.worker.yml to bring up on that host (default: all four).
-# REDIS_URL is passed inline from this deploy environment.
+# WORKER_REDIS_URL (Tailscale-reachable) is passed inline; distinct from the
+# swarm-internal REDIS_URL used by in-VPS services.
 #
 # Example: WORKER_HOSTS="pc:kokoro-gpu,yolo-gpu cloudbox:kokoro-cpu"
 if [ -n "${WORKER_HOSTS:-}" ]; then
@@ -179,7 +180,7 @@ if [ -n "${WORKER_HOSTS:-}" ]; then
     host="${entry%%:*}"
     svcs="${entry#*:}"; [ "$svcs" = "$entry" ] && svcs=""
     svcs="${svcs//,/ }"
-    ssh "$host" "REDIS_URL='$REDIS_URL' bash -s" <<EOF && echo "  ✓ $host updated" || echo "  ✗ $host update failed (continuing)"
+    ssh "$host" "REDIS_URL='$WORKER_REDIS_URL' bash -s" <<EOF && echo "  ✓ $host updated" || echo "  ✗ $host update failed (continuing)"
       set -e
       rm -rf /tmp/yapit-worker
       git clone --depth=1 https://github.com/yapit-tts/yapit /tmp/yapit-worker >/dev/null
