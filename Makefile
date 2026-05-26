@@ -144,7 +144,7 @@ define do_release
 	sed -i "s/^## Unreleased/## $$NEW — $$(date +%Y-%m-%d)/" CHANGELOG.md; \
 	git add CHANGELOG.md; \
 	git commit -m "Release $$NEW"; \
-	git tag "$$NEW"; \
+	git tag -m "$$NEW" "$$NEW"; \
 	echo "Tagged $$NEW. Run 'make gh-release' to push and publish."
 endef
 
