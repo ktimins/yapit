@@ -275,6 +275,8 @@ See the BILLING RECONCILIATION section — event counts and character totals are
 Events older than 3-7 days can be ignored unless part of a larger pattern / investigation.
 E.g. items on the DLQ from >7 days ago are almost certainly already taken care of.
 
+One-time "short redis blips / outages" are caused by deployment and not worth flagging (unless cadence does not match deploy logs or is higher than the push frequency to main.
+
 ## Log Investigation
 
 Logs are JSON lines (loguru format). Key fields:
@@ -343,10 +345,12 @@ jq -r '[.record.extra | keys[]] | .[]' gateway.jsonl | sort | uniq -c | sort -rn
 
 ## Output Format
 
+Don't lead with any throat-clearing like "I have everything I need" or "Writing the report" or "I have the complete picture".
+
 Start with status:
 - ✅ **All nominal** — no issues
 - ⚠️ **Issues detected** — problems found
-- 🔍 **Anomalies noted** — unusual patterns worth noting
+- 🔍 **Anomalies noted** — unusual patterns worth noting (no/low traffic is not an anomaly, unless there's a sudden change)
 
 Then:
 1. **Summary** (2-3 sentences)
