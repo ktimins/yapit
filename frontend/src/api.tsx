@@ -70,19 +70,18 @@ export const ApiProvider: FC<PropsWithChildren> = ({ children }) => {
 			const currentUser = userRef.current;
 
 			if (currentUser?.currentSession) {
-				// Fetch fresh token for each request (handles expiry/refresh automatically)
-				try {
-					const { accessToken } = await currentUser.currentSession.getTokens();
-					if (accessToken) {
-						config.headers.Authorization = `Bearer ${accessToken}`;
-						return config;
-					}
-				} catch (err) {
-					console.error("api: failed to get access token:", err);
-				}
+				// getTokens() refreshes the access token when expired. On failure, fail
+				// the request rather than downgrading a signed-in user to an anonymous
+				// identity (silently mis-attributes writes, hits anonymous quotas).
+				const { accessToken } =
+					await currentUser.currentSession.getTokens();
+				if (!accessToken)
+					throw new Error("No access token for signed-in session");
+				config.headers.Authorization = `Bearer ${accessToken}`;
+				return config;
 			}
 
-			// Anonymous user or token fetch failed - send anonymous ID + HMAC token
+			// Anonymous user - send anonymous ID + HMAC token
 			config.headers["X-Anonymous-ID"] = await getOrCreateAnonymousId();
 			config.headers["X-Anonymous-Token"] = getAnonymousToken();
 			return config;

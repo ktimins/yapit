@@ -312,8 +312,7 @@ const SoundControl = memo(function SoundControl({
   const [isDraggingProgressBar, setIsDraggingProgressBar] = useState(false);
   const navigate = useNavigate();
 
-  const usageLimitError = (serverTTSError && serverTTSRecoverable === false) ? serverTTSError
-    : connectionError?.includes("Usage limit exceeded") ? connectionError : null;
+  const usageLimitError = (serverTTSError && serverTTSRecoverable === false) ? serverTTSError : null;
   const isUsingPremium = !isKokoroModel(voiceSelection.model);
   const isUsingKokoroServer = voiceSelection.model === KOKORO_SLUG;
   const isUsingBrowser = voiceSelection.model === KOKORO_BROWSER_SLUG;

@@ -34,11 +34,15 @@ export function useTTSWebSocket(
 
   const BASE_RECONNECT_DELAY = 1000;
   const MAX_RECONNECT_DELAY = 30000;
+  const MAX_AUTH_FAILURES = 3;
 
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const isConnectedRef = useRef(false);
+  const connectingRef = useRef(false);
+  const epochRef = useRef(0);
+  const authFailuresRef = useRef(0);
 
   // Message queue: messages sent while WS is not connected are queued and drained on connect
   const messageQueueRef = useRef<object[]>([]);
@@ -47,14 +51,12 @@ export function useTTSWebSocket(
     const baseUrl = `${WS_BASE_URL}/v1/ws/tts`;
     if (!authEnabled) return baseUrl;
     if (user?.currentSession) {
-      try {
-        const { accessToken } = await user.currentSession.getTokens();
-        if (accessToken) {
-          return `${baseUrl}?token=${encodeURIComponent(accessToken)}`;
-        }
-      } catch (err) {
-        console.error("[TTS WS] Failed to get access token:", err);
-      }
+      // getTokens() refreshes the access token via the refresh token when expired.
+      // A failure here is transient (e.g. mobile network after backgrounding) — throw
+      // so connect() retries. Never downgrade a signed-in user to an anonymous identity.
+      const { accessToken } = await user.currentSession.getTokens();
+      if (!accessToken) throw new Error("No access token for signed-in session");
+      return `${baseUrl}?token=${encodeURIComponent(accessToken)}`;
     }
     const anonymousId = await getOrCreateAnonymousId();
     const anonymousToken = getAnonymousToken();
@@ -62,15 +64,35 @@ export function useTTSWebSocket(
   }, [user]);
 
   const connect = useCallback(async () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    // wsRef is set at creation, so non-null covers CONNECTING and OPEN;
+    // connectingRef covers the async token fetch before the socket exists.
+    if (connectingRef.current || wsRef.current) return;
+    connectingRef.current = true;
+    const epoch = epochRef.current;
+
+    const scheduleReconnect = () => {
+      setIsReconnecting(true);
+      const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current), MAX_RECONNECT_DELAY);
+      console.log(`[TTS WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1})`);
+      reconnectTimeoutRef.current = window.setTimeout(() => {
+        reconnectAttemptsRef.current++;
+        connect();
+      }, delay);
+    };
 
     try {
       const url = await getWebSocketUrl();
+      if (epoch !== epochRef.current) {
+        // Unmounted or user changed while fetching the token — abandon this attempt
+        connectingRef.current = false;
+        return;
+      }
       console.log("[TTS WS] Connecting to:", url.replace(/token=[^&]+/, "token=***"));
       const ws = new WebSocket(url);
+      wsRef.current = ws;
 
       ws.onopen = () => {
-        wsRef.current = ws;
+        connectingRef.current = false;
         console.log("[TTS WS] Connected");
         isConnectedRef.current = true;
         setIsConnected(true);
@@ -91,6 +113,7 @@ export function useTTSWebSocket(
         onConnectRef.current?.();
 
         reconnectAttemptsRef.current = 0;
+        authFailuresRef.current = 0;
       };
 
       ws.onmessage = (event: MessageEvent) => {
@@ -107,38 +130,39 @@ export function useTTSWebSocket(
       };
 
       ws.onclose = (event) => {
+        connectingRef.current = false;
         console.log("[TTS WS] Disconnected:", event.code, event.reason);
         isConnectedRef.current = false;
         setIsConnected(false);
-        wsRef.current = null;
+        if (wsRef.current === ws) wsRef.current = null;
 
-        if (event.code !== 1000 && event.code !== 1008) {
-          setIsReconnecting(true);
-          const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current), MAX_RECONNECT_DELAY);
-          console.log(`[TTS WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1})`);
-          reconnectTimeoutRef.current = window.setTimeout(() => {
-            reconnectAttemptsRef.current++;
-            connect();
-          }, delay);
-        } else if (event.code === 1008) {
-          setIsReconnecting(false);
-          setConnectionError("Authentication failed. Please log in again.");
+        if (event.code === 1000) return;
+
+        if (event.code === 1008) {
+          // Auth rejection is usually a stale access token — each reconnect fetches a
+          // fresh one via getTokens(). Only give up after repeated failures (dead session).
+          authFailuresRef.current++;
+          if (authFailuresRef.current >= MAX_AUTH_FAILURES) {
+            setIsReconnecting(false);
+            setConnectionError("Authentication failed. Please log in again.");
+            return;
+          }
         }
+
+        scheduleReconnect();
       };
     } catch (err) {
+      connectingRef.current = false;
       console.error("[TTS WS] Failed to connect:", err);
-      setIsReconnecting(true);
-      const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current), MAX_RECONNECT_DELAY);
-      reconnectTimeoutRef.current = window.setTimeout(() => {
-        reconnectAttemptsRef.current++;
-        connect();
-      }, delay);
+      scheduleReconnect();
     }
   }, [getWebSocketUrl]);
 
   useEffect(() => {
     connect();
     return () => {
+      epochRef.current++;
+      connectingRef.current = false;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (wsRef.current) {
         wsRef.current.close(1000);
@@ -146,6 +170,30 @@ export function useTTSWebSocket(
       }
       isConnectedRef.current = false;
       setIsConnected(false);
+    };
+  }, [connect]);
+
+  // Mobile resume: when the app returns to the foreground (or network comes back),
+  // the backoff timer may be up to 30s out — or we gave up after auth failures.
+  // Reset and reconnect immediately so pause→play after unlock is seamless.
+  useEffect(() => {
+    const wake = () => {
+      if (connectingRef.current || wsRef.current) return;
+      reconnectAttemptsRef.current = 0;
+      authFailuresRef.current = 0;
+      setConnectionError(null);
+      setIsReconnecting(false);
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      connect();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [connect]);
 
