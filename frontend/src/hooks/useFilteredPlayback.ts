@@ -62,19 +62,23 @@ export function useFilteredPlayback(
       return result;
     }
 
-    // Build set of visible absolute block indices (expanded sections only)
+    // Blocks default to visible; only blocks inside a collapsed section are hidden.
+    // Sections don't necessarily cover all blocks (e.g. preamble before the first
+    // heading) — uncovered blocks can never be collapsed. Matches filterVisibleBlocks.
+    const hiddenIndices = new Set<number>();
+    for (const section of sections) {
+      if (expandedSections.has(section.id)) continue;
+      for (let absIdx = section.startBlockIdx; absIdx <= section.endBlockIdx; absIdx++) {
+        hiddenIndices.add(absIdx);
+      }
+    }
+
     const visibleAbsoluteIndices: number[] = [];
     const absoluteToVisualMap = new Map<number, number>();
-
-    for (const section of sections) {
-      if (!expandedSections.has(section.id)) continue;
-
-      for (let absIdx = section.startBlockIdx; absIdx <= section.endBlockIdx; absIdx++) {
-        if (absIdx >= 0 && absIdx < documentBlocks.length) {
-          absoluteToVisualMap.set(absIdx, visibleAbsoluteIndices.length);
-          visibleAbsoluteIndices.push(absIdx);
-        }
-      }
+    for (let absIdx = 0; absIdx < documentBlocks.length; absIdx++) {
+      if (hiddenIndices.has(absIdx)) continue;
+      absoluteToVisualMap.set(absIdx, visibleAbsoluteIndices.length);
+      visibleAbsoluteIndices.push(absIdx);
     }
 
     // Build filtered states and calculate duration
