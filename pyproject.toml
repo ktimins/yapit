@@ -18,7 +18,7 @@ classifiers = [
 
 dependencies = [
   "pydantic~=2.12.5",
-  "fastapi[standard]~=0.135.0",
+  "fastapi[standard]~=0.139.0",
   "slowapi~=0.1.9",
   "sqlmodel~=0.0.37",
   "redis[hiredis]~=7.3.0",
