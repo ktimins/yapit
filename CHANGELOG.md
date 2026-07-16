@@ -1,12 +1,26 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 — 2026-07-16
 
 * **Breaking:** Removed Inworld TTS integration — Inworld adapter, voices, and dispatcher deleted. Self-hosters using Inworld must switch to the OpenAI-compatible TTS adapter.
 * Added Voice plan (€3/mo) — server-side Kokoro TTS without AI extraction.
 * Added `/pricing` route (alias for `/subscription`).
 * Removed Plus and Max subscription tiers (deactivated via migration).
 * Word-level highlighting during Kokoro TTS playback. #78
+* Added HTML file upload support; URL fetching now uses a browser-like user agent and no longer rejects HTML error pages (e.g. soft 404s).
+* Added per-request `extraction_prompt` override for AI extraction; fixed extraction progress polling when a custom prompt is set. #86
+* Document sidebar now paginates with infinite scroll instead of loading all documents at once. #84
+* Browser tab shows the document title on the playback page.
+* Updated defuddle 0.15.0 → 0.19.1 — improved web content extraction (MathML reconstruction, table fixes, new site extractors) and a security fix sanitizing site-extractor HTML output (GHSA-jg4p-g6xj-4qmf).
+* Fixed signed-in users being silently downgraded to their anonymous identity after a failed token refresh (zero-quota errors, lost reading position on mobile).
+* Fixed Stripe webhooks 500ing on subscriptions of deleted (anonymized) accounts.
+* Fixed missing whitespace between audio chunks in rendered documents. #88
+* Fixed EPUB conversion of Springer academic citations and Obsidian footnotes. #85
+* Fixed async extraction errors being masked by a generic message — real reasons (quota, validation) now reach the client.
+* Fixed crash when synthesizing degenerate text that produces empty audio.
+* Fixed file extension leaking into the document title when the filename is used as fallback.
+* Fixed transient Stack Auth connection failures with a shared HTTP client and retries.
+* Fixed progress bar dropping blocks that precede the first section heading.
 * Fixed quota banner re-appearing after switching to a free/local voice.
 * Fixed URL submission racing format loading, bypassing AI transform selector.
 * Fixed arxiv title fetch with retry and reduced timeout.
