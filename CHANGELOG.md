@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.1 — 2026-07-17
+
+* Security: updated starlette 0.50.0 → 1.3.1 (via fastapi 0.139) — `Form()` size limits are now enforced for urlencoded request bodies, closing a memory-exhaustion DoS on upload endpoints (GHSA-82w8-qh3p-5jfq).
+* Security: updated axios 1.13.5 → 1.18.0 — prototype-pollution and header-injection hardening (GHSA-898c-q2cr-xwhg).
+
 ## v0.3.0 — 2026-07-16
 
 * **Breaking:** Removed Inworld TTS integration — Inworld adapter, voices, and dispatcher deleted. Self-hosters using Inworld must switch to the OpenAI-compatible TTS adapter.
