@@ -59,6 +59,7 @@ jobs:
               - 'frontend/**'
             gateway:
               - 'pyproject.toml'
+              - 'uv.lock'
               - 'yapit/gateway/**'
               - 'yapit/contracts.py'
             defuddle:

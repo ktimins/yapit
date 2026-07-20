@@ -8,8 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
-RUN uv pip install . --no-cache-dir --system
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project -o requirements.txt \
+    && uv pip install -r requirements.txt --no-cache-dir --system \
+    && rm requirements.txt pyproject.toml uv.lock
 
 COPY yapit/ /app/yapit
 
