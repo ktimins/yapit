@@ -4,12 +4,12 @@ repos:
     hooks:
       # lint (check-only to avoid stash conflicts with unstaged changes)
       - id: ruff
-        types_or: [ python ]
+        types_or: [ python, pyi ]
         language: python
         args: [ --no-fix ]
       # format (check-only)
       - id: ruff-format
-        types_or: [ python ]
+        types_or: [ python, pyi ]
         args: [ --check ]
 
   - repo: local
