@@ -145,6 +145,7 @@ services:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
       - clickhouse-data:/var/lib/clickhouse
+      - ./docker/clickhouse-config.xml:/etc/clickhouse-server/config.d/disable-system-logs.xml:ro
     ulimits:
       nofile:
         soft: 262144
