@@ -1,5 +1,5 @@
 import uuid
-from typing import List, cast
+from typing import cast
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -40,10 +40,10 @@ class ModelRead(BaseModel):
     voices: list[VoiceRead] = []
 
 
-@router.get("", response_model=List[ModelRead])
+@router.get("", response_model=list[ModelRead])
 async def list_models(
     db: DbSession,
-) -> List[ModelRead]:
+) -> list[ModelRead]:
     """Get all available TTS models with their voices (only active ones)."""
     models = (await db.exec(select(TTSModel).where(col(TTSModel.is_active).is_(True)))).all()
     return [
@@ -92,10 +92,10 @@ async def read_model(
     )
 
 
-@router.get("/{model_slug}/voices", response_model=List[VoiceRead])
+@router.get("/{model_slug}/voices", response_model=list[VoiceRead])
 async def list_voices(
     model: CurrentTTSModel,
-) -> List[VoiceRead]:
+) -> list[VoiceRead]:
     """Get all active voices available for a specific model."""
     return [
         VoiceRead(

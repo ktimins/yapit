@@ -252,8 +252,8 @@ def _prompt_cache_utilization_chart(hourly: pd.DataFrame | None) -> go.Figure | 
             y=hourly["cache_pct"],
             mode="lines+markers",
             name="Cache %",
-            line=dict(color=COLORS["accent_cyan"], width=2),
-            marker=dict(size=4),
+            line={"color": COLORS["accent_cyan"], "width": 2},
+            marker={"size": 4},
             fill="tozeroy",
             fillcolor="rgba(86, 212, 221, 0.15)",
             hovertemplate="%{y:.1f}% cached<extra></extra>",
@@ -265,7 +265,7 @@ def _prompt_cache_utilization_chart(hourly: pd.DataFrame | None) -> go.Figure | 
         height=300,
         xaxis_title="Time",
         yaxis_title="% Cached",
-        yaxis=dict(range=[0, max(hourly["cache_pct"].max() * 1.1, 10)]),
+        yaxis={"range": [0, max(hourly["cache_pct"].max() * 1.1, 10)]},
     )
     apply_plotly_theme(fig)
     return fig
@@ -285,7 +285,7 @@ def _cached_vs_uncached_chart(hourly: pd.DataFrame | None) -> go.Figure | None:
             y=hourly["cached"],
             mode="lines",
             name="Cached",
-            line=dict(width=0),
+            line={"width": 0},
             fill="tonexty",
             fillcolor="rgba(86, 212, 221, 0.6)",
             stackgroup="one",
@@ -298,7 +298,7 @@ def _cached_vs_uncached_chart(hourly: pd.DataFrame | None) -> go.Figure | None:
             y=hourly["uncached"],
             mode="lines",
             name="Uncached",
-            line=dict(width=0),
+            line={"width": 0},
             fill="tonexty",
             fillcolor="rgba(88, 166, 255, 0.6)",
             stackgroup="one",
@@ -311,7 +311,7 @@ def _cached_vs_uncached_chart(hourly: pd.DataFrame | None) -> go.Figure | None:
         height=300,
         xaxis_title="Time",
         yaxis_title="Input Tokens",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -348,7 +348,7 @@ def _token_usage_chart(df: pd.DataFrame) -> go.Figure | None:
                 y=hourly[col],
                 mode="lines",
                 name=name,
-                line=dict(width=0),
+                line={"width": 0},
                 fill="tonexty",
                 fillcolor=color,
                 stackgroup="one",
@@ -361,7 +361,7 @@ def _token_usage_chart(df: pd.DataFrame) -> go.Figure | None:
         height=300,
         xaxis_title="Time",
         yaxis_title="Tokens",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -388,7 +388,7 @@ def _cost_breakdown_pie(df: pd.DataFrame) -> go.Figure | None:
             go.Pie(
                 labels=["Input", "Output", "Thinking"],
                 values=[costs["input_cost"], candidates_cost, thoughts_cost],
-                marker=dict(colors=[COLORS["accent_blue"], COLORS["accent_teal"], COLORS["accent_purple"]]),
+                marker={"colors": [COLORS["accent_blue"], COLORS["accent_teal"], COLORS["accent_purple"]]},
                 hole=0.4,
                 textinfo="label+percent",
                 hovertemplate="%{label}: $%{value:.4f}<extra></extra>",
@@ -422,7 +422,7 @@ def _extraction_error_breakdown(df: pd.DataFrame) -> go.Figure | None:
             x=list(status_counts.values),
             y=labels,
             orientation="h",
-            marker=dict(color=COLORS["error"]),
+            marker={"color": COLORS["error"]},
             hovertemplate="%{y}: %{x}<extra></extra>",
         )
     )
@@ -445,7 +445,7 @@ def _estimate_section(df: pd.DataFrame):
 
     estimates = estimates.copy()
     for field in ["num_pages", "text_pages", "raster_pages", "estimated_tokens"]:
-        estimates[field] = estimates["data"].apply(lambda d: d.get(field, 0) if isinstance(d, dict) else 0)
+        estimates[field] = estimates["data"].apply(lambda d, f=field: d.get(f, 0) if isinstance(d, dict) else 0)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -514,15 +514,15 @@ def _estimate_accuracy_chart(df: pd.DataFrame) -> tuple[go.Figure | None, dict |
             x=merged["estimated"],
             y=merged["actual"],
             mode="markers",
-            marker=dict(
-                size=10,
-                color=merged["pct_off"],
-                colorscale="RdYlGn_r",
-                cmin=-50,
-                cmax=50,
-                colorbar=dict(title="% Off"),
-                line=dict(width=1, color=COLORS["border"]),
-            ),
+            marker={
+                "size": 10,
+                "color": merged["pct_off"],
+                "colorscale": "RdYlGn_r",
+                "cmin": -50,
+                "cmax": 50,
+                "colorbar": {"title": "% Off"},
+                "line": {"width": 1, "color": COLORS["border"]},
+            },
             hovertemplate="Est: %{x:,.0f}<br>Actual: %{y:,.0f}<br>Off: %{customdata:.1f}%<extra></extra>",
             customdata=merged["pct_off"],
         )
@@ -534,7 +534,7 @@ def _estimate_accuracy_chart(df: pd.DataFrame) -> tuple[go.Figure | None, dict |
             x=[0, max_val],
             y=[0, max_val],
             mode="lines",
-            line=dict(color=COLORS["text_muted"], dash="dash", width=1),
+            line={"color": COLORS["text_muted"], "dash": "dash", "width": 1},
             showlegend=False,
             hoverinfo="skip",
         )
@@ -674,8 +674,8 @@ def _detection_throughput_chart(df: pd.DataFrame) -> go.Figure | None:
             x=hourly["time_bin"],
             y=hourly["count"],
             mode="lines+markers",
-            line=dict(color=COLORS["accent_purple"], width=2),
-            marker=dict(size=5),
+            line={"color": COLORS["accent_purple"], "width": 2},
+            marker={"size": 5},
             fill="tozeroy",
             fillcolor="rgba(163, 113, 247, 0.15)",
             hovertemplate="%{y} detections<extra></extra>",
@@ -700,7 +700,7 @@ def _detection_latency_chart(df: pd.DataFrame) -> go.Figure | None:
             x=complete.loc[latencies.index, "local_time"],
             y=latencies,
             mode="markers",
-            marker=dict(size=5, color=COLORS["accent_purple"], opacity=0.7),
+            marker={"size": 5, "color": COLORS["accent_purple"], "opacity": 0.7},
             hovertemplate="Latency: %{y:.0f}ms<br>%{x}<extra></extra>",
         )
     )
@@ -722,7 +722,7 @@ def _detection_latency_histogram(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=latencies,
             nbinsx=30,
-            marker=dict(color=COLORS["accent_purple"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_purple"], "line": {"width": 1, "color": COLORS["border"]}},
             hovertemplate="Latency: %{x:.0f}ms<br>Count: %{y}<extra></extra>",
         )
     )
@@ -754,7 +754,7 @@ def _figures_per_page_chart(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=figures,
             nbinsx=max(int(figures.max()) + 1, 10),
-            marker=dict(color=COLORS["accent_cyan"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_cyan"], "line": {"width": 1, "color": COLORS["border"]}},
             hovertemplate="Figures: %{x}<br>Pages: %{y}<extra></extra>",
         )
     )
@@ -783,7 +783,7 @@ def _figure_mismatch_chart(df: pd.DataFrame) -> go.Figure | None:
             x=mismatches["yolo_count"],
             y=mismatches["model_count"],
             mode="markers",
-            marker=dict(size=10, color=colors, opacity=0.7, line=dict(width=1, color=COLORS["border"])),
+            marker={"size": 10, "color": colors, "opacity": 0.7, "line": {"width": 1, "color": COLORS["border"]}},
             hovertemplate="YOLO: %{x}<br>Model: %{y}<br>Delta: %{customdata}<extra></extra>",
             customdata=mismatches["delta"],
         )
@@ -795,7 +795,7 @@ def _figure_mismatch_chart(df: pd.DataFrame) -> go.Figure | None:
             x=[0, max_val],
             y=[0, max_val],
             mode="lines",
-            line=dict(color=COLORS["text_muted"], width=1, dash="dash"),
+            line={"color": COLORS["text_muted"], "width": 1, "dash": "dash"},
             showlegend=False,
             hoverinfo="skip",
         )
@@ -880,7 +880,7 @@ def _document_processing_section(df: pd.DataFrame):
             barmode="stack",
             xaxis_title="Time",
             yaxis_title="Extractions",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
         )
         apply_plotly_theme(fig)
         st.plotly_chart(fig, width="stretch")
@@ -926,7 +926,7 @@ def _batch_jobs_section(df: pd.DataFrame):
                         y=[label] * len(events),
                         mode="markers",
                         name=label,
-                        marker=dict(size=12, color=color, symbol="diamond"),
+                        marker={"size": 12, "color": color, "symbol": "diamond"},
                         hovertemplate=f"{label}<br>%{{x}}<extra></extra>",
                     )
                 )

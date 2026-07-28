@@ -101,7 +101,7 @@ class YoloTestResult:
 def generate_synthetic_pdf(num_pages: int) -> bytes:
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
+    _width, height = letter
 
     for i in range(num_pages):
         c.drawString(100, height - 100, f"Page {i + 1}")

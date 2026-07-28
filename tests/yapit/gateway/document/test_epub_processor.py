@@ -110,7 +110,7 @@ class TestCleanPandocOutput:
 class TestRunPandoc:
     def test_returns_cleaned_markdown(self):
         content = (FIXTURES_DIR / "test.epub").read_bytes()
-        markdown, images = _run_pandoc(content)
+        markdown, _images = _run_pandoc(content)
         assert len(markdown) > 0
         assert "<span" not in markdown
 

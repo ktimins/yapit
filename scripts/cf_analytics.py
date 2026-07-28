@@ -23,7 +23,7 @@ import json as json_mod
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -406,7 +406,7 @@ def main(args: Args) -> None:
         print("CLOUDFLARE_API_TOKEN not set. Run `make prod-env` first.", file=sys.stderr)
         sys.exit(1)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start = (now - timedelta(hours=args.hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 

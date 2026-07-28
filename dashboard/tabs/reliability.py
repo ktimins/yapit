@@ -96,8 +96,8 @@ def _websocket_sessions(df: pd.DataFrame):
                 x=hourly["time_bin"],
                 y=hourly["count"],
                 mode="lines+markers",
-                line=dict(color=COLORS["accent_cyan"], width=2),
-                marker=dict(size=4),
+                line={"color": COLORS["accent_cyan"], "width": 2},
+                marker={"size": 4},
                 fill="tozeroy",
                 fillcolor="rgba(86, 212, 221, 0.15)",
                 hovertemplate="%{y} connections<extra></extra>",
@@ -153,7 +153,7 @@ def _webhook_stats(df: pd.DataFrame):
             go.Histogram(
                 x=latencies,
                 nbinsx=30,
-                marker=dict(color=COLORS["accent_blue"], line=dict(width=1, color=COLORS["border"])),
+                marker={"color": COLORS["accent_blue"], "line": {"width": 1, "color": COLORS["border"]}},
                 hovertemplate="Latency: %{x:.0f}ms<br>Count: %{y}<extra></extra>",
             )
         )
@@ -239,7 +239,7 @@ def _gateway_errors(df: pd.DataFrame):
             barmode="stack",
             xaxis_title="Time",
             yaxis_title="Count",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
         )
         apply_plotly_theme(fig)
         st.plotly_chart(fig, width="stretch")
@@ -348,8 +348,8 @@ def _retry_timeline(df: pd.DataFrame) -> go.Figure | None:
             x=hourly["time_bin"],
             y=hourly["count"],
             mode="lines+markers",
-            line=dict(color=COLORS["warning"], width=2),
-            marker=dict(size=5),
+            line={"color": COLORS["warning"], "width": 2},
+            marker={"size": 5},
             fill="tozeroy",
             fillcolor="rgba(210, 153, 34, 0.15)",
             hovertemplate="%{y} requeued<extra></extra>",
@@ -374,8 +374,8 @@ def _dlq_timeline(df: pd.DataFrame) -> go.Figure | None:
             x=hourly["time_bin"],
             y=hourly["count"],
             mode="lines+markers",
-            line=dict(color=COLORS["error"], width=2),
-            marker=dict(size=6),
+            line={"color": COLORS["error"], "width": 2},
+            marker={"size": 6},
             fill="tozeroy",
             fillcolor="rgba(248, 81, 73, 0.15)",
             hovertemplate="%{y} to DLQ<extra></extra>",
@@ -410,8 +410,8 @@ def _incomplete_jobs_chart(df: pd.DataFrame) -> go.Figure | None:
             x=hourly["time_bin"],
             y=hourly["count"],
             mode="lines+markers",
-            line=dict(color=COLORS["text_muted"], width=2),
-            marker=dict(size=5),
+            line={"color": COLORS["text_muted"], "width": 2},
+            marker={"size": 5},
             fill="tozeroy",
             fillcolor="rgba(110, 118, 129, 0.15)",
             hovertemplate="%{y} incomplete<extra></extra>",

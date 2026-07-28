@@ -10,7 +10,7 @@ import argparse
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
@@ -186,11 +186,12 @@ def run_agent_comparison(run_a: Path, run_b: Path, track: str) -> str:
         capture_output=True,
         text=True,
         cwd=SCRIPT_DIR.parent.parent,  # project root
+        check=False,
     )
 
     if result.stdout:
         print(result.stdout)
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         out_path = run_b / f"comparison_{run_a.name}_vs_{run_b.name}_{ts}.md"
         out_path.write_text(result.stdout)
         print(f"\nSaved to: {out_path}")

@@ -151,7 +151,7 @@ def _voice_popularity(df: pd.DataFrame) -> go.Figure | None:
         height=max(200, len(voice_counts) * 30),
         xaxis_title="Requests",
         yaxis_title=None,
-        yaxis=dict(autorange="reversed"),
+        yaxis={"autorange": "reversed"},
     )
     apply_plotly_theme(fig)
     return fig
@@ -180,7 +180,7 @@ def _model_usage_over_time(df: pd.DataFrame) -> go.Figure | None:
                 y=model_data["count"],
                 mode="lines",
                 name=model,
-                line=dict(width=0, color=get_model_color(model)),
+                line={"width": 0, "color": get_model_color(model)},
                 fill="tonexty",
                 stackgroup="one",
                 hovertemplate=f"<b>{model}</b>: %{{y}}<extra></extra>",
@@ -192,7 +192,7 @@ def _model_usage_over_time(df: pd.DataFrame) -> go.Figure | None:
         height=350,
         xaxis_title="Time",
         yaxis_title="Requests",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -271,7 +271,7 @@ def _user_distribution_chart(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=user_counts,
             nbinsx=20,
-            marker=dict(color=COLORS["accent_blue"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_blue"], "line": {"width": 1, "color": COLORS["border"]}},
             hovertemplate="Requests: %{x}<br>Users: %{y}<extra></extra>",
         )
     )
@@ -310,7 +310,7 @@ def _request_rate_distribution(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=user_minute_counts["req_per_min"],
             nbinsx=50,
-            marker=dict(color=COLORS["accent_blue"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_blue"], "line": {"width": 1, "color": COLORS["border"]}},
             hovertemplate="Req/min: %{x}<br>User-minutes: %{y}<extra></extra>",
         )
     )
@@ -419,7 +419,7 @@ def _chars_per_user_by_model(df: pd.DataFrame) -> go.Figure | None:
             go.Histogram(
                 x=kokoro_data,
                 nbinsx=30,
-                marker=dict(color=COLORS["accent_teal"], line=dict(width=1, color=COLORS["border"])),
+                marker={"color": COLORS["accent_teal"], "line": {"width": 1, "color": COLORS["border"]}},
                 hovertemplate="Chars: %{x:,.0f}<br>Users: %{y}<extra></extra>",
                 name="Kokoro",
             ),
@@ -434,7 +434,7 @@ def _chars_per_user_by_model(df: pd.DataFrame) -> go.Figure | None:
             go.Histogram(
                 x=premium_data,
                 nbinsx=30,
-                marker=dict(color=COLORS["accent_purple"], line=dict(width=1, color=COLORS["border"])),
+                marker={"color": COLORS["accent_purple"], "line": {"width": 1, "color": COLORS["border"]}},
                 hovertemplate="Chars: %{x:,.0f}<br>Users: %{y}<extra></extra>",
                 name="Premium",
             ),
@@ -479,7 +479,7 @@ def _pages_per_user_distribution(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=user_pages,
             nbinsx=30,
-            marker=dict(color=COLORS["accent_coral"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_coral"], "line": {"width": 1, "color": COLORS["border"]}},
             hovertemplate="Pages: %{x}<br>Users: %{y}<extra></extra>",
         )
     )
@@ -577,7 +577,7 @@ def _monthly_usage_trends(df: pd.DataFrame) -> go.Figure | None:
         title="Monthly Usage Trends (Average per User)",
         height=350,
         barmode="group",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     fig.update_xaxes(title_text="Month", row=1, col=1)
     fig.update_xaxes(title_text="Month", row=1, col=2)
@@ -605,8 +605,8 @@ def _unique_users_over_time(df: pd.DataFrame) -> go.Figure | None:
             x=daily_users["date"],
             y=daily_users["unique_users"],
             mode="lines+markers",
-            line=dict(color=COLORS["accent_cyan"], width=2),
-            marker=dict(size=6),
+            line={"color": COLORS["accent_cyan"], "width": 2},
+            marker={"size": 6},
             fill="tozeroy",
             fillcolor="rgba(86, 212, 221, 0.15)",
             hovertemplate="%{x}: %{y} users<extra></extra>",

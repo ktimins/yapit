@@ -141,12 +141,16 @@ def analyze_params(
                             char_counts.append(len(text))
                             splits.append(text)
             # Other blocks with audio
-            elif hasattr(block, "audio_block_idx") and block.audio_block_idx is not None:
-                if hasattr(block, "plain_text") and block.plain_text:
-                    text = block.plain_text.strip()
-                    if text:
-                        char_counts.append(len(text))
-                        splits.append(text)
+            elif (
+                hasattr(block, "audio_block_idx")
+                and block.audio_block_idx is not None
+                and hasattr(block, "plain_text")
+                and block.plain_text
+            ):
+                text = block.plain_text.strip()
+                if text:
+                    char_counts.append(len(text))
+                    splits.append(text)
 
         if char_counts:
             section_stat = SectionStats(

@@ -212,7 +212,6 @@ async def capture_feature_screenshots(page, out_dir: Path) -> None:
 
     TODO: implement when we have specific feature URLs/states to capture.
     """
-    pass
 
 
 def main() -> None:

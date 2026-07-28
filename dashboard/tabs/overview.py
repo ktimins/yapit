@@ -62,7 +62,7 @@ def _volume_sparkline(df: pd.DataFrame) -> go.Figure | None:
             x=hourly["hour"],
             y=hourly["count"],
             mode="lines",
-            line=dict(color=COLORS["accent_teal"], width=2),
+            line={"color": COLORS["accent_teal"], "width": 2},
             fill="tozeroy",
             fillcolor="rgba(57, 217, 138, 0.15)",
             hovertemplate="%{y} requests<extra></extra>",
@@ -73,9 +73,9 @@ def _volume_sparkline(df: pd.DataFrame) -> go.Figure | None:
         plot_bgcolor="rgba(0,0,0,0)",
         font={"color": COLORS["text_primary"]},
         height=140,
-        margin=dict(l=0, r=0, t=4, b=30),
-        xaxis=dict(showgrid=False, title=None, gridcolor="rgba(48,54,61,0.5)"),
-        yaxis=dict(showgrid=True, title=None, gridcolor=COLORS["border"]),
+        margin={"l": 0, "r": 0, "t": 4, "b": 30},
+        xaxis={"showgrid": False, "title": None, "gridcolor": "rgba(48,54,61,0.5)"},
+        yaxis={"showgrid": True, "title": None, "gridcolor": COLORS["border"]},
         showlegend=False,
     )
     return fig
@@ -118,7 +118,7 @@ def _event_breakdown(df: pd.DataFrame):
             y=counts.index,
             x=counts.values,
             orientation="h",
-            marker=dict(color=COLORS["accent_blue"], line=dict(width=0)),
+            marker={"color": COLORS["accent_blue"], "line": {"width": 0}},
             hovertemplate="%{y}: %{x:,}<extra></extra>",
         )
     )
@@ -126,9 +126,9 @@ def _event_breakdown(df: pd.DataFrame):
     fig.update_layout(
         title="",
         height=max(200, len(counts) * 26),
-        margin=dict(l=0, r=10, t=0, b=0),
-        xaxis=dict(title=None, showgrid=True, gridcolor=COLORS["border"]),
-        yaxis=dict(title=None, autorange="reversed"),
+        margin={"l": 0, "r": 10, "t": 0, "b": 0},
+        xaxis={"title": None, "showgrid": True, "gridcolor": COLORS["border"]},
+        yaxis={"title": None, "autorange": "reversed"},
         showlegend=False,
     )
     st.plotly_chart(fig, width="stretch")
@@ -180,7 +180,7 @@ def _trends_volume(daily_df: pd.DataFrame) -> go.Figure | None:
             x=daily_total["local_date"],
             y=daily_total["event_count"],
             mode="lines",
-            line=dict(color=COLORS["accent_teal"], width=2),
+            line={"color": COLORS["accent_teal"], "width": 2},
             fill="tozeroy",
             fillcolor="rgba(57, 217, 138, 0.1)",
             hovertemplate="%{x|%b %d}: %{y:,.0f} events<extra></extra>",
@@ -217,7 +217,7 @@ def _trends_latency(daily_df: pd.DataFrame) -> go.Figure | None:
             y=daily["p50"],
             mode="lines",
             name="P50",
-            line=dict(color=COLORS["accent_teal"], width=2),
+            line={"color": COLORS["accent_teal"], "width": 2},
             hovertemplate="P50: %{y:.0f}ms<extra></extra>",
         )
     )
@@ -227,7 +227,7 @@ def _trends_latency(daily_df: pd.DataFrame) -> go.Figure | None:
             y=daily["p95"],
             mode="lines",
             name="P95",
-            line=dict(color=COLORS["accent_coral"], width=2),
+            line={"color": COLORS["accent_coral"], "width": 2},
             hovertemplate="P95: %{y:.0f}ms<extra></extra>",
         )
     )
@@ -236,7 +236,7 @@ def _trends_latency(daily_df: pd.DataFrame) -> go.Figure | None:
         height=220,
         xaxis_title=None,
         yaxis_title="Latency (ms)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -257,8 +257,8 @@ def _trends_users(daily_df: pd.DataFrame) -> go.Figure | None:
             x=daily_users["local_date"],
             y=daily_users["unique_users"],
             mode="lines+markers",
-            line=dict(color=COLORS["accent_cyan"], width=2),
-            marker=dict(size=4),
+            line={"color": COLORS["accent_cyan"], "width": 2},
+            marker={"size": 4},
             fill="tozeroy",
             fillcolor="rgba(86, 212, 221, 0.1)",
             hovertemplate="%{x|%b %d}: %{y} users<extra></extra>",
@@ -297,8 +297,8 @@ def _trends_cache(daily_df: pd.DataFrame) -> go.Figure | None:
             x=daily["local_date"],
             y=daily["rate"],
             mode="lines+markers",
-            line=dict(color=COLORS["accent_purple"], width=2),
-            marker=dict(size=4),
+            line={"color": COLORS["accent_purple"], "width": 2},
+            marker={"size": 4},
             hovertemplate="%{x|%b %d}: %{y:.1f}%<extra></extra>",
         )
     )
@@ -361,7 +361,7 @@ def _trends_tokens(daily_df: pd.DataFrame) -> go.Figure | None:
                     y=daily[col],
                     mode="lines",
                     name=name,
-                    line=dict(width=0),
+                    line={"width": 0},
                     fill="tonexty",
                     fillcolor=color,
                     stackgroup="one",
@@ -374,7 +374,7 @@ def _trends_tokens(daily_df: pd.DataFrame) -> go.Figure | None:
         height=220,
         xaxis_title=None,
         yaxis_title="Tokens",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -420,7 +420,7 @@ def _trends_doc_extraction(daily_df: pd.DataFrame) -> go.Figure | None:
         barmode="stack",
         xaxis_title=None,
         yaxis_title="Extractions",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig

@@ -15,6 +15,11 @@ ignore = [
     "D205", # 1 blank line required between summary line and description
     "D415", # don't require proper end-of-sentence (".", "!", "?")
     "D417", # don't require documentation for every function param
+    "BLE001", # broad `except Exception` is deliberate: worker loops and best-effort cleanup
+    "DTZ", # naive-datetime convention; going tz-aware is a migration, not a lint fix
+    "ASYNC230", # one-shot small file reads in async paths; revisit if a hot path appears
+    "S110", # try-except-pass is intentional best-effort cleanup where used
+    "S112", # try-except-continue likewise
 ]
 extend-select = [
     "I", # import sorting
@@ -26,6 +31,10 @@ extend-select = [
 "yapit/gateway/api/**/*.py" = ["E711"]
 "yapit/gateway/domain_models.py" = ["E711"]
 "yapit/gateway/db.py" = ["E711"]
+
+[lint.flake8-bugbear]
+# FastAPI dependency injection lives in argument defaults by design (B008)
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Security"]
 
 [lint.pydocstyle]
 convention = "google"

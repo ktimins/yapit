@@ -338,14 +338,13 @@ async def delete_account(
         sub
         and sub.stripe_subscription_id
         and sub.status in (SubscriptionStatus.active, SubscriptionStatus.trialing, SubscriptionStatus.past_due)
-    ):
-        if settings.stripe_secret_key:
-            try:
-                client = stripe.StripeClient(settings.stripe_secret_key, max_network_retries=2)
-                await client.v1.subscriptions.cancel_async(sub.stripe_subscription_id)
-                logger.info(f"Canceled Stripe subscription {sub.stripe_subscription_id} for user deletion")
-            except stripe.InvalidRequestError as e:
-                logger.warning(f"Failed to cancel Stripe subscription: {e}")
+    ) and settings.stripe_secret_key:
+        try:
+            client = stripe.StripeClient(settings.stripe_secret_key, max_network_retries=2)
+            await client.v1.subscriptions.cancel_async(sub.stripe_subscription_id)
+            logger.info(f"Canceled Stripe subscription {sub.stripe_subscription_id} for user deletion")
+        except stripe.InvalidRequestError as e:
+            logger.warning(f"Failed to cancel Stripe subscription: {e}")
 
     # 2. Delete user-owned data (cascades handle blocks → block variants)
     await db.exec(delete(Document).where(col(Document.user_id) == user_id))

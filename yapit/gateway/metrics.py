@@ -35,7 +35,7 @@ Query examples:
 import asyncio
 import json
 import traceback
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -74,7 +74,7 @@ async def start_metrics_writer() -> None:
 
 async def stop_metrics_writer() -> None:
     """Stop background writer and flush pending events."""
-    global _writer_task, _write_queue, _pool
+    global _writer_task, _pool
 
     if _writer_task:
         _writer_task.cancel()
@@ -116,7 +116,7 @@ async def _writer_loop() -> None:
                         batch.append(_write_queue.get_nowait())  # ty: ignore[unresolved-attribute]
                     except asyncio.QueueEmpty:
                         break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
             if batch:
@@ -180,7 +180,7 @@ async def _write_batch(events: list[dict[str, Any]]) -> None:
     for event in events:
         data = event.get("data")
         row = (
-            event.get("timestamp", datetime.now(timezone.utc)),
+            event.get("timestamp", datetime.now(UTC)),
             event.get("event_type"),
             event.get("model_slug"),
             event.get("voice_slug"),

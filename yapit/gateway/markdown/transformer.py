@@ -1430,9 +1430,7 @@ class DocumentTransformer:
 
     def _extract_plain_text(self, node: SyntaxTreeNode) -> str:
         """Extract plain text from a node, recursively."""
-        if node.type == "text":
-            return node.content or ""
-        elif node.type == "code_inline":
+        if node.type == "text" or node.type == "code_inline":
             return node.content or ""
         elif node.children:
             return "".join(self._extract_plain_text(c) for c in node.children)

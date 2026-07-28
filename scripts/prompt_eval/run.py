@@ -40,7 +40,7 @@ import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from itertools import groupby
 from pathlib import Path
 from typing import Annotated, Literal
@@ -55,8 +55,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from yapit.gateway.document.orchestration import deduplicate_footnotes, stitch_pages  # noqa: E402
-from yapit.gateway.document.processors.gemini import GeminiExtractor  # noqa: E402
+from yapit.gateway.document.orchestration import deduplicate_footnotes, stitch_pages
+from yapit.gateway.document.processors.gemini import GeminiExtractor
 
 SCRIPT_DIR = Path(__file__).parent
 DOCS_DIR = SCRIPT_DIR / "docs"
@@ -158,8 +158,6 @@ class List:
     Add description = 'my note' to a run's meta.toml to annotate it.
     """
 
-    pass
-
 
 # -- Shared infrastructure -------------------------------------------------
 
@@ -207,6 +205,7 @@ def get_git_hash() -> str:
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,
+            check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
@@ -282,7 +281,7 @@ def write_meta(
     existing = read_meta(meta_file) if meta_file.exists() else {}
 
     meta = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "git_hash": get_git_hash(),
         "prompt_path": existing.get("prompt_path", str(prompt_path)),
         "media_first": media_first,

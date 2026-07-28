@@ -51,6 +51,7 @@ def ssh_cmd(host: str, cmd: str) -> str:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     if result.returncode != 0:
         print(f"SSH error: {result.stderr.strip()}", file=sys.stderr)

@@ -79,6 +79,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/ruff-action@v4.1.0
+        with:
+          # keep in sync with ruff-pre-commit rev in .pre-commit-config.yaml
+          version: "0.16.0"
 
   test-unit:
     if: ${{ inputs.skip_tests != true && !contains(github.event.head_commit.message, '[skip tests]') }}

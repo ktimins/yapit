@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.8
+    rev: v0.16.0
     hooks:
       # lint (check-only to avoid stash conflicts with unstaged changes)
       - id: ruff
@@ -16,7 +16,8 @@ repos:
     hooks:
       - id: ty-check
         name: ty type check
-        entry: uvx ty@latest check yapit/gateway/
+        # pinned: ty@latest broke on new false positives with zero code changes; bump deliberately (keep in sync with Makefile check-backend)
+        entry: uvx ty@0.0.56 check yapit/gateway/
         language: system
         files: ^yapit/gateway/
         types_or: [python]

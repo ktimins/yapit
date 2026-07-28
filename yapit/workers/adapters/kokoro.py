@@ -47,7 +47,7 @@ class KokoroAdapter(SynthAdapter[VoiceConfig]):
             return
         self._pipe = KPipeline(repo_id="hexgrad/Kokoro-82M", lang_code="a", device=DEVICE)
         voices_json = Path(__file__).parent.parent / "kokoro" / "voices.json"
-        self._voices = [v["index"] for v in json.load(open(voices_json))]
+        self._voices = [v["index"] for v in json.loads(voices_json.read_text())]
         for v in self._voices:
             self.pipe.load_voice(v)
 

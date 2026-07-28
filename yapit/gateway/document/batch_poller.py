@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from google import genai
 from loguru import logger
@@ -127,7 +127,7 @@ async def process_batch_completion(
 
     result_processing_ms = int((time.monotonic() - start_time) * 1000)
     submitted_at = datetime.fromisoformat(job.submitted_at)
-    total_duration_ms = int((datetime.now(timezone.utc) - submitted_at).total_seconds() * 1000)
+    total_duration_ms = int((datetime.now(UTC) - submitted_at).total_seconds() * 1000)
 
     await log_event(
         "batch_job_complete",

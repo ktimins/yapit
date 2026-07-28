@@ -257,7 +257,7 @@ def run_rich(args: Args) -> None:
 
     # ── 3. Money flow at selected price ──
 
-    vat_v, gross_v, fee_v, net_v = net_revenue(args.voice_price, vat_rate)
+    vat_v, _gross_v, fee_v, net_v = net_revenue(args.voice_price, vat_rate)
     c.print(f"\n[bold]€{args.voice_price:.2f}/mo Voice — where the money goes:[/bold]")
     c.print(f"  VAT ({args.vat}):  €{vat_v:.2f}  ({vat_v / args.voice_price * 100:.0f}%)")
     c.print(f"  Stripe:       €{fee_v:.2f}  ({fee_v / args.voice_price * 100:.0f}%)")

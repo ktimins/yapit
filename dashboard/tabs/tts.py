@@ -133,7 +133,7 @@ def _queue_depth_chart(df: pd.DataFrame) -> go.Figure | None:
                 y=model_data["queue_depth"],
                 mode="markers",
                 name=model,
-                marker=dict(size=6, color=get_model_color(model)),
+                marker={"size": 6, "color": get_model_color(model)},
                 hovertemplate=f"<b>{model}</b><br>Depth: %{{y}}<br>%{{x}}<extra></extra>",
             )
         )
@@ -143,7 +143,7 @@ def _queue_depth_chart(df: pd.DataFrame) -> go.Figure | None:
         height=300,
         xaxis_title="Time",
         yaxis_title="Queue Depth",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -164,7 +164,7 @@ def _queue_wait_histogram(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=queue_wait,
             nbinsx=30,
-            marker=dict(color=COLORS["accent_blue"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_blue"], "line": {"width": 1, "color": COLORS["border"]}},
             hovertemplate="Wait: %{x:.0f}ms<br>Count: %{y}<extra></extra>",
         )
     )
@@ -207,11 +207,11 @@ def _latency_scatter(df: pd.DataFrame) -> go.Figure | None:
                 y=model_data["worker_latency_ms"],
                 mode="markers",
                 name=model,
-                marker=dict(
-                    size=8,
-                    color=color,
-                    opacity=0.7,
-                ),
+                marker={
+                    "size": 8,
+                    "color": color,
+                    "opacity": 0.7,
+                },
                 hovertemplate=f"<b>{model}</b><br>%{{y:.0f}}ms<br>%{{x}}<extra></extra>",
             )
         )
@@ -221,7 +221,7 @@ def _latency_scatter(df: pd.DataFrame) -> go.Figure | None:
         height=350,
         xaxis_title="Time",
         yaxis_title="Worker Latency (ms)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -256,7 +256,7 @@ def _realtime_ratio_chart(df: pd.DataFrame) -> go.Figure | None:
                 y=model_data["ratio"],
                 mode="markers",
                 name=model,
-                marker=dict(size=7, color=color, opacity=0.7),
+                marker={"size": 7, "color": color, "opacity": 0.7},
                 hovertemplate=f"<b>{model}</b><br>%{{y:.2f}}x<br>%{{x}}<extra></extra>",
             ),
             row=1,
@@ -268,7 +268,7 @@ def _realtime_ratio_chart(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=complete["ratio"],
             nbinsx=20,
-            marker=dict(color=COLORS["accent_purple"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_purple"], "line": {"width": 1, "color": COLORS["border"]}},
             showlegend=False,
             hovertemplate="Ratio: %{x:.2f}<br>Count: %{y}<extra></extra>",
         ),
@@ -302,7 +302,7 @@ def _realtime_ratio_chart(df: pd.DataFrame) -> go.Figure | None:
     fig.update_layout(
         title="Synthesis Speed (ratio < 1 = faster than real-time)",
         height=350,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     fig.update_xaxes(title_text="Time", row=1, col=1)
     fig.update_xaxes(title_text="Ratio", row=1, col=2)
@@ -331,7 +331,7 @@ def _text_length_vs_latency(df: pd.DataFrame) -> go.Figure | None:
                 y=model_data["worker_latency_ms"],
                 mode="markers",
                 name=model,
-                marker=dict(size=7, color=color, opacity=0.6),
+                marker={"size": 7, "color": color, "opacity": 0.6},
                 hovertemplate=f"<b>{model}</b><br>%{{x}} chars<br>%{{y:.0f}}ms<extra></extra>",
             )
         )
@@ -341,7 +341,7 @@ def _text_length_vs_latency(df: pd.DataFrame) -> go.Figure | None:
         height=350,
         xaxis_title="Text Length (chars)",
         yaxis_title="Worker Latency (ms)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -376,7 +376,7 @@ def _cps_chart(df: pd.DataFrame) -> go.Figure | None:
                 y=model_data["cps"],
                 mode="markers",
                 name=model,
-                marker=dict(size=7, color=color, opacity=0.7),
+                marker={"size": 7, "color": color, "opacity": 0.7},
                 hovertemplate=f"<b>{model}</b><br>%{{y:.1f}} chars/s<br>%{{x}}<extra></extra>",
             ),
             row=1,
@@ -388,7 +388,7 @@ def _cps_chart(df: pd.DataFrame) -> go.Figure | None:
         go.Histogram(
             x=complete["cps"],
             nbinsx=25,
-            marker=dict(color=COLORS["accent_teal"], line=dict(width=1, color=COLORS["border"])),
+            marker={"color": COLORS["accent_teal"], "line": {"width": 1, "color": COLORS["border"]}},
             showlegend=False,
             hovertemplate="CPS: %{x:.1f}<br>Count: %{y}<extra></extra>",
         ),
@@ -430,7 +430,7 @@ def _cps_chart(df: pd.DataFrame) -> go.Figure | None:
     fig.update_layout(
         title="Characters Per Second (text_length × 1000 / audio_duration_ms)",
         height=350,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     fig.update_xaxes(title_text="Time", row=1, col=1)
     fig.update_xaxes(title_text="CPS", row=1, col=2)
@@ -490,7 +490,7 @@ def _latency_breakdown_chart(df: pd.DataFrame) -> go.Figure | None:
         height=300,
         xaxis_title="Time",
         yaxis_title="Latency (ms)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
     apply_plotly_theme(fig)
     return fig
@@ -561,11 +561,11 @@ def _billing_processing_chart(billing: pd.DataFrame) -> go.Figure | None:
             x=billing["local_time"],
             y=billing["duration_ms"],
             mode="markers",
-            marker=dict(
-                size=batch_sizes.clip(upper=20).apply(lambda s: max(5, s)),
-                color=COLORS["accent_teal"],
-                opacity=0.7,
-            ),
+            marker={
+                "size": batch_sizes.clip(upper=20).apply(lambda s: max(5, s)),
+                "color": COLORS["accent_teal"],
+                "opacity": 0.7,
+            },
             customdata=batch_sizes,
             hovertemplate="%{y:.0f}ms (%{customdata} events)<extra></extra>",
         )

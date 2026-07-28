@@ -104,12 +104,12 @@ def sniff_content_type(content: bytes) -> str | None:
         return "image/png"
     if content.startswith(b"\xff\xd8\xff"):
         return "image/jpeg"
-    if content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):
+    if content.startswith((b"GIF87a", b"GIF89a")):
         return "image/gif"
     if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
         return "image/webp"
     head = content[:1024].lstrip()
-    if head.startswith(b"<!DOCTYPE") or head.startswith(b"<html") or head.startswith(b"<HTML"):
+    if head.startswith((b"<!DOCTYPE", b"<html", b"<HTML")):
         return "text/html"
     return None
 

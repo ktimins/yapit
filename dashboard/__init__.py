@@ -62,7 +62,7 @@ def main():
 
         if st.button("Sync from Prod", width="stretch"):
             with st.spinner("Syncing metrics from prod..."):
-                result = subprocess.run(["make", "sync-metrics"], capture_output=True, text=True)
+                result = subprocess.run(["make", "sync-metrics"], capture_output=True, text=True, check=False)
                 if result.returncode != 0:
                     st.error(f"Sync failed: {result.stderr}")
                 else:

@@ -301,7 +301,7 @@ async def stripe_webhook(
             await _handle_invoice_failed(invoice, db)
     except Exception as e:
         duration_ms = int((time.monotonic() - start) * 1000)
-        log.exception(f"Webhook handler error: {e}")
+        log.exception("Webhook handler error")
         await log_event(
             "stripe_webhook", status_code=500, duration_ms=duration_ms, data={"event_type": event.type, "error": str(e)}
         )

@@ -21,7 +21,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import psycopg2
 import stripe
@@ -215,13 +215,13 @@ def advance_clock(clock_id: str, days: int) -> dict:
     """Advance test clock by N days and wait for ready."""
     target_time = int(time.time()) + (days * 24 * 60 * 60)
     clock = stripe.test_helpers.TestClock.advance(clock_id, frozen_time=target_time)
-    print(f"Advancing clock to {datetime.fromtimestamp(target_time, tz=timezone.utc)}")
+    print(f"Advancing clock to {datetime.fromtimestamp(target_time, tz=UTC)}")
 
     # Wait for clock to be ready
     for _ in range(30):
         clock = stripe.test_helpers.TestClock.retrieve(clock_id)
         if clock.status == "ready":
-            print(f"Clock ready at {datetime.fromtimestamp(clock.frozen_time, tz=timezone.utc)}")
+            print(f"Clock ready at {datetime.fromtimestamp(clock.frozen_time, tz=UTC)}")
             return clock
         time.sleep(1)
 
@@ -317,7 +317,7 @@ def main():
     print(f"User ID:         {user_id}")
     print(f"Tier:            {args.tier}")
     print(
-        f"Period:          {datetime.fromtimestamp(period_start, tz=timezone.utc)} to {datetime.fromtimestamp(period_end, tz=timezone.utc)}"
+        f"Period:          {datetime.fromtimestamp(period_start, tz=UTC)} to {datetime.fromtimestamp(period_end, tz=UTC)}"
     )
     if args.usage_tokens or args.usage_voice_chars:
         print(f"Usage:           {args.usage_tokens} tokens, {args.usage_voice_chars} voice chars")

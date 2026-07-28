@@ -41,7 +41,7 @@ def sparkline(
             x=df[time_col],
             y=df[value_col],
             mode="lines",
-            line=dict(color=color or COLORS["accent_teal"], width=2),
+            line={"color": color or COLORS["accent_teal"], "width": 2},
             fill="tozeroy",
             fillcolor="rgba(57, 217, 138, 0.1)",
             hovertemplate="%{y:.1f}<extra></extra>",
@@ -50,9 +50,9 @@ def sparkline(
 
     fig.update_layout(
         height=height,
-        margin=dict(l=0, r=0, t=0, b=0),
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        xaxis={"visible": False},
+        yaxis={"visible": False},
         showlegend=False,
         hovermode="x unified",
     )
@@ -73,7 +73,7 @@ def metric_with_sparkline(
     st.markdown(f"**{label}**")
     st.markdown(f"### {value}")
     if delta:
-        delta_color = COLORS["success"] if delta.startswith("+") or delta.startswith("↑") else COLORS["error"]
+        delta_color = COLORS["success"] if delta.startswith(("+", "↑")) else COLORS["error"]
         st.markdown(f"<span style='color: {delta_color}'>{delta}</span>", unsafe_allow_html=True)
 
     if sparkline_data is not None and not sparkline_data.empty:
@@ -132,7 +132,7 @@ def format_duration(ms: float | None) -> str:
         return f"{ms / 60000:.1f}m"
 
 
-def format_number(n: float | int | None, decimals: int = 0) -> str:
+def format_number(n: float | None, decimals: int = 0) -> str:
     """Format number with thousands separator."""
     if n is None or pd.isna(n):
         return "-"

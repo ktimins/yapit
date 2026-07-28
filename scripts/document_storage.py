@@ -143,7 +143,7 @@ def run_remote(vps_host: str, args: list[str]) -> int:
     remote_cmd = f'docker exec -i $(docker ps -qf "name=yapit_gateway") python - {" ".join(args)}'
     ssh_cmd = ["ssh", vps_host, remote_cmd]
 
-    result = subprocess.run(ssh_cmd, input=script_content, text=True)
+    result = subprocess.run(ssh_cmd, input=script_content, text=True, check=False)
     return result.returncode
 
 

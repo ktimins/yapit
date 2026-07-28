@@ -7,9 +7,9 @@ from dashboard.tabs.tts import render as render_tts
 from dashboard.tabs.usage import render as render_usage
 
 __all__ = [
-    "render_overview",
-    "render_tts",
     "render_documents",
+    "render_overview",
     "render_reliability",
+    "render_tts",
     "render_usage",
 ]

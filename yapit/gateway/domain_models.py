@@ -168,10 +168,10 @@ class BlockVariant(SQLModel, table=True):
     def get_hash(text: str, model_slug: str, voice_slug: str, parameters: dict) -> str:
         hasher = hashlib.sha256()
         hasher.update(text.encode("utf-8"))
-        hasher.update(f"|{model_slug}".encode("utf-8"))
-        hasher.update(f"|{voice_slug}".encode("utf-8"))
+        hasher.update(f"|{model_slug}".encode())
+        hasher.update(f"|{voice_slug}".encode())
         for key, value in sorted(parameters.items()):
-            hasher.update(f"|{key}={value}".encode("utf-8"))
+            hasher.update(f"|{key}={value}".encode())
         return hasher.hexdigest()
 
 
@@ -282,9 +282,7 @@ class UserSubscription(SQLModel, table=True):
         """True if subscription will cancel (either via cancel_at_period_end or cancel_at)."""
         if self.cancel_at_period_end:
             return True
-        if self.cancel_at and self.cancel_at <= self.current_period_end:
-            return True
-        return False
+        return bool(self.cancel_at and self.cancel_at <= self.current_period_end)
 
     # Trial eligibility: highest tier ever subscribed (for per-tier trial logic)
     highest_tier_subscribed: PlanTier | None = Field(default=None)

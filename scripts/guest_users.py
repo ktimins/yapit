@@ -25,7 +25,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -59,9 +59,8 @@ def run_local(args: Args) -> int:
 
     database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
 
-    with psycopg.connect(database_url) as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("""
+    with psycopg.connect(database_url) as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("""
                 SELECT
                     CASE WHEN user_id LIKE 'anon-%%' THEN 'guest' ELSE 'registered' END AS user_type,
                     COUNT(DISTINCT user_id) AS users,
@@ -73,9 +72,9 @@ def run_local(args: Args) -> int:
                 GROUP BY 1
                 ORDER BY 1
             """)
-            summary = cur.fetchall()
+        summary = cur.fetchall()
 
-            cur.execute("""
+        cur.execute("""
                 SELECT
                     user_id,
                     COUNT(*) AS doc_count,
@@ -87,9 +86,9 @@ def run_local(args: Args) -> int:
                 GROUP BY user_id
                 ORDER BY storage_bytes DESC
             """)
-            guests = cur.fetchall()
+        guests = cur.fetchall()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if args.json:
         return _output_json(summary, guests, now, args)
@@ -109,7 +108,7 @@ def run_local(args: Args) -> int:
         return 0
 
     if args.inactive:
-        guests = [g for g in guests if (now - g["last_activity"].replace(tzinfo=timezone.utc)).days > args.inactive]
+        guests = [g for g in guests if (now - g["last_activity"].replace(tzinfo=UTC)).days > args.inactive]
         print(f"\n=== Guest Users Inactive >{args.inactive} Days ({len(guests)}) ===")
     else:
         print(f"\n=== Guest Users ({len(guests)} total) ===")
@@ -119,7 +118,7 @@ def run_local(args: Args) -> int:
     print(f"{'User ID':<44} {'Docs':>5} {'Storage':>10} {'Last Active':<12} {'Idle':>6}")
     print("-" * 82)
     for g in display:
-        last = g["last_activity"].replace(tzinfo=timezone.utc)
+        last = g["last_activity"].replace(tzinfo=UTC)
         idle_days = (now - last).days
         print(
             f"{g['user_id'][:43]:<44} {g['doc_count']:>5} "
@@ -139,7 +138,7 @@ def run_local(args: Args) -> int:
 
 def _output_json(summary, guests, now, args: Args):
     if args.inactive:
-        guests = [g for g in guests if (now - g["last_activity"].replace(tzinfo=timezone.utc)).days > args.inactive]
+        guests = [g for g in guests if (now - g["last_activity"].replace(tzinfo=UTC)).days > args.inactive]
 
     output = {
         "summary": [
@@ -157,7 +156,7 @@ def _output_json(summary, guests, now, args: Args):
                 "doc_count": g["doc_count"],
                 "storage_bytes": g["storage_bytes"],
                 "last_activity": g["last_activity"].isoformat(),
-                "idle_days": (now - g["last_activity"].replace(tzinfo=timezone.utc)).days,
+                "idle_days": (now - g["last_activity"].replace(tzinfo=UTC)).days,
             }
             for g in (guests[: args.top] if args.top else guests)
         ],
@@ -174,7 +173,7 @@ def _output_json(summary, guests, now, args: Args):
 def run_remote(vps_host: str, args: list[str]) -> int:
     script_content = Path(__file__).read_text()
     remote_cmd = f'docker exec -i $(docker ps -qf "name=yapit_gateway") python - {" ".join(args)}'
-    result = subprocess.run(["ssh", vps_host, remote_cmd], input=script_content, text=True)
+    result = subprocess.run(["ssh", vps_host, remote_cmd], input=script_content, text=True, check=False)
     return result.returncode
 
 

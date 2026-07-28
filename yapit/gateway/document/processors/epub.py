@@ -363,6 +363,7 @@ def _run_pandoc(content: bytes) -> tuple[str, list[ExtractedImage]]:
             capture_output=True,
             text=True,
             timeout=PANDOC_TIMEOUT_SECONDS,
+            check=False,
         )
 
         if result.returncode != 0:

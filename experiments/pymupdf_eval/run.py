@@ -88,7 +88,7 @@ def approach_dict_filter(page: pymupdf.Page) -> str:
             continue
         lines = []
         for line in block["lines"]:
-            dx, dy = line.get("dir", (1, 0))
+            dx, _dy = line.get("dir", (1, 0))
             if abs(dx) < 0.5:
                 continue  # skip rotated text (>60° from horizontal)
             text = "".join(span["text"] for span in line["spans"])
@@ -127,7 +127,7 @@ def approach_dict_filter_images(page: pymupdf.Page) -> str:
 
         lines = []
         for line in block["lines"]:
-            dx, dy = line.get("dir", (1, 0))
+            dx, _dy = line.get("dir", (1, 0))
             if abs(dx) < 0.5:
                 continue
             text = "".join(span["text"] for span in line["spans"])
@@ -151,7 +151,7 @@ def get_approach(name: str):
     approach_file = APPROACHES_DIR / f"{name}.py"
     if approach_file.exists():
         ns = {}
-        exec(approach_file.read_text(), ns)
+        exec(approach_file.read_text(), ns)  # noqa: S102 — approaches/ are local plugin files, run deliberately
         assert "extract_page" in ns, f"{approach_file} must define extract_page(page) -> str"
         return ns["extract_page"]
     available = list(BUILTIN_APPROACHES.keys())
@@ -259,7 +259,7 @@ def run_compare(run_a: str, run_b: str, doc_filter: str | None = None):
 
         pages_a = sorted(da.glob("page_*.txt"))
         pages_b = sorted(db.glob("page_*.txt"))
-        page_names = sorted(set(p.name for p in pages_a) | set(p.name for p in pages_b))
+        page_names = sorted({p.name for p in pages_a} | {p.name for p in pages_b})
 
         doc_changes = []
         for pname in page_names:

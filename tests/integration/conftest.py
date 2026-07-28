@@ -5,7 +5,7 @@ import json
 import os
 import subprocess
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -24,7 +24,7 @@ async def provision_subscription(user_id: str, plan_id: int = 2) -> None:
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with session_factory() as session:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         subscription = UserSubscription(
             user_id=user_id,
             plan_id=plan_id,
@@ -62,7 +62,7 @@ def create_unique_user(is_admin: bool = False) -> dict:
         cmd.append("--no-admin")
 
     # Run the script and capture user_id from stderr
-    result = subprocess.run(cmd, capture_output=True, text=True, env={**os.environ})
+    result = subprocess.run(cmd, capture_output=True, text=True, env={**os.environ}, check=False)
 
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create user: {result.stdout}\n{result.stderr}")
@@ -119,7 +119,7 @@ def regular_user():
     return user_data
 
 
-async def make_client(auth_token: str = None):
+async def make_client(auth_token: str | None = None):
     """Create an HTTP client with optional authentication."""
     headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=200.0, headers=headers) as client:

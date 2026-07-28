@@ -65,7 +65,7 @@ async def synthesize(
     ) as response:
         if response.status_code != 200:
             await response.aread()
-            raise Exception(f"HTTP {response.status_code}: {response.text[:500]}")
+            raise RuntimeError(f"HTTP {response.status_code}: {response.text[:500]}")
         async for line in response.aiter_lines():
             if not line.strip():
                 continue

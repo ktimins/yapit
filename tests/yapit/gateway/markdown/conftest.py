@@ -8,9 +8,8 @@ def ast_contains(nodes: list[InlineContent], node_type: str) -> bool:
     for node in nodes:
         if node.type == node_type:
             return True
-        if hasattr(node, "content") and isinstance(node.content, list):
-            if ast_contains(node.content, node_type):
-                return True
+        if hasattr(node, "content") and isinstance(node.content, list) and ast_contains(node.content, node_type):
+            return True
         if isinstance(node, ListContent):
             for item in node.items:
                 if ast_contains(item, node_type):

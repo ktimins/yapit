@@ -112,47 +112,38 @@ class TestLRUEviction:
         assert await small_cache.exists("c")
 
 
+async def _read_last_accessed(cache, key: str = "key1"):
+    import aiosqlite
+
+    async with (
+        aiosqlite.connect(cache.db_path) as db,
+        db.execute("SELECT last_accessed FROM cache WHERE key=?", (key,)) as cur,
+    ):
+        row = await cur.fetchone()
+        return row[0]
+
+
 class TestBatchedLRU:
     @pytest.mark.asyncio
     async def test_retrieve_does_not_write_immediately(self, unlimited_cache):
         """retrieve_data should not update last_accessed synchronously."""
         await unlimited_cache.store("key1", b"data")
-
-        import aiosqlite
-
-        async with aiosqlite.connect(unlimited_cache.db_path) as db:
-            async with db.execute("SELECT last_accessed FROM cache WHERE key='key1'") as cur:
-                row = await cur.fetchone()
-                ts_before = row[0]
+        ts_before = await _read_last_accessed(unlimited_cache)
 
         await unlimited_cache.retrieve_data("key1")
 
-        async with aiosqlite.connect(unlimited_cache.db_path) as db:
-            async with db.execute("SELECT last_accessed FROM cache WHERE key='key1'") as cur:
-                row = await cur.fetchone()
-                ts_after = row[0]
-
+        ts_after = await _read_last_accessed(unlimited_cache)
         assert ts_before == ts_after, "retrieve_data should not write last_accessed immediately"
 
     @pytest.mark.asyncio
     async def test_flush_updates_last_accessed(self, unlimited_cache):
         await unlimited_cache.store("key1", b"data")
-
-        import aiosqlite
-
-        async with aiosqlite.connect(unlimited_cache.db_path) as db:
-            async with db.execute("SELECT last_accessed FROM cache WHERE key='key1'") as cur:
-                row = await cur.fetchone()
-                ts_before = row[0]
+        ts_before = await _read_last_accessed(unlimited_cache)
 
         await unlimited_cache.retrieve_data("key1")
         await unlimited_cache._flush_lru()
 
-        async with aiosqlite.connect(unlimited_cache.db_path) as db:
-            async with db.execute("SELECT last_accessed FROM cache WHERE key='key1'") as cur:
-                row = await cur.fetchone()
-                ts_after = row[0]
-
+        ts_after = await _read_last_accessed(unlimited_cache)
         assert ts_after > ts_before
 
 
