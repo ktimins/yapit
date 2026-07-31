@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -403,7 +404,7 @@ async def test_private_document_404_without_auth(client, app, as_test_user):
 
 @pytest.mark.asyncio
 async def test_owner_sees_full_document(client, as_test_user):
-    """Owner gets is_owner=True and last_block_idx."""
+    """Owner gets is_owner=True, last_block_idx, and an offset-aware created."""
     r = await client.post("/v1/documents/text", json={"content": "My content"})
     doc_id = r.json()["id"]
 
@@ -413,3 +414,5 @@ async def test_owner_sees_full_document(client, as_test_user):
     assert r.status_code == 200
     assert r.json()["is_owner"] is True
     assert r.json()["last_block_idx"] == 3
+    # Consumers derive a local calendar date from this, so the offset has to be on the wire.
+    assert datetime.fromisoformat(r.json()["created"]).tzinfo is not None
