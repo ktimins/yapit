@@ -1,5 +1,6 @@
 volumes:
   pgdata:
+  redisdata:
   audio_cache:
   document_cache:
   extraction_cache:
@@ -61,9 +62,17 @@ services:
 
   redis:
     init: true
-    image: redis:7-alpine
+    # Pinned: `docker stack deploy` resolves floating tags to a digest, so an upstream
+    # :7-alpine push recreates this container on the next unrelated deploy, wiping
+    # Redis. Bump deliberately.
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+    # AOF so a container recreation doesn't drop unacked billing events. No per-write
+    # fsync: this Redis also buffers audio blobs, and syncing those would stall synthesis.
+    command: redis-server --appendonly yes --appendfsync no
     user: redis
     cap_drop: [ALL]
+    volumes:
+      - redisdata:/data
     ports:
       - target: 6379
         published: 6379

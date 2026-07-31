@@ -8,6 +8,7 @@ from google import genai
 from loguru import logger
 from redis.asyncio import Redis
 
+from yapit.gateway.backoff import Backoff
 from yapit.gateway.cache import Cache
 from yapit.gateway.db import create_session
 from yapit.gateway.document.batch import (
@@ -27,6 +28,7 @@ from yapit.gateway.domain_models import Document, DocumentMetadata, UsageType
 from yapit.gateway.markdown.transformer import DocumentTransformer
 from yapit.gateway.metrics import log_event
 from yapit.gateway.reservations import release_reservation
+from yapit.gateway.supervision import supervised
 from yapit.gateway.usage import record_usage
 
 POLL_INTERVAL_SECONDS = 15
@@ -242,7 +244,7 @@ class BatchPoller:
         if self._running:
             return
         self._running = True
-        self._task = asyncio.create_task(self._poll_loop())
+        self._task = asyncio.create_task(supervised("batch-poller", self._poll_loop()))
         logger.info("Batch poller started")
 
     async def stop(self) -> None:
@@ -256,25 +258,25 @@ class BatchPoller:
         logger.info("Batch poller stopped")
 
     async def _poll_loop(self) -> None:
-        while self._running:
+        backoff = Backoff.from_interval(POLL_INTERVAL_SECONDS)
+        while True:
             try:
                 jobs = await list_pending_batch_jobs(self._redis)
 
                 for job in jobs:
-                    if not self._running:
-                        break
                     try:
                         await self._poll_and_handle_job(job)
                     except Exception as e:
                         logger.error(f"Error polling batch job {job.job_name}: {e}")
 
+                backoff.reset()
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.error(f"Batch poller error: {e}")
-                await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                await backoff.sleep()
 
     async def _poll_and_handle_job(self, job: BatchJobInfo) -> None:
         job, batch_job = await poll_batch_job(self._client, self._redis, job)

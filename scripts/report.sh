@@ -165,6 +165,9 @@ Yapit is a text-to-speech platform with these components:
 - `error` — gateway-side failures caught by exception handlers (e.g., cache write failures, DB errors during result processing). These are NOT pipeline-specific errors — they indicate something broke inside the gateway itself. Check `data.message` for details.
 - `warning` — non-fatal issues worth tracking (e.g., near-failures, degraded behavior)
 - ANY `error` event is a red flag. These represent failures that may silently drop work — e.g., a synthesis result that completed but couldn't be cached, leaving the user with no audio.
+- **`Background task <name> crashed` / `Background task <name> exited unexpectedly`** — a long-lived loop (billing-consumer, result-consumer, cache-persister, tts-visibility, yolo-visibility, batch-poller, cache-lru-flush, cache-maintenance, usage-log-cleanup, guest-cleanup, billing-sync, openai-tts-dispatcher) is **gone** and is not coming back. Whatever that loop does has stopped silently for the rest of the process lifetime. **P0 — a gateway restart is required to recover.** Identify the loop from the name and report what has stopped (e.g. billing-consumer = nothing is being billed).
+- **`Billing consumer group missing (Redis reset?), re-creating`** (WARNING, `yapit.gateway.billing_consumer`) — Redis was recreated and the consumer group was rebuilt automatically. One occurrence per Redis restart is expected and self-healing; nothing to do. A *repeating* pattern means Redis is restarting in a loop — investigate that instead.
+- Since retries now back off exponentially (1s→60s), a stuck loop produces roughly 1 error/minute rather than 1/second. **Do not read a low error count as a minor problem** — check the time span between first and last occurrence, not just the count.
 
 **Billing/Webhooks:**
 - `stripe_webhook` — Stripe webhook processing
@@ -381,16 +384,44 @@ If any of these would help future analysis, note them:
 EOF
 
 echo "Running Claude analysis..."
-output=$(clankr run "$PROJECT_DIR" -p "$SCRIPT_DIR/report-profile" \
-    -- --system-prompt "$PROMPT" \
-    --output-format json \
-    -p "$EXTRA_CONTEXT" \
-    2>"$REPORT_DIR/claude-stderr.log") || {
-    echo "Claude analysis failed. stderr:"
-    cat "$REPORT_DIR/claude-stderr.log"
-    echo "stdout: $output"
-    exit 1
+
+run_analysis() {
+    clankr run "$PROJECT_DIR" -p "$SCRIPT_DIR/report-profile" \
+        -- --system-prompt "$PROMPT" \
+        --output-format json \
+        -p "$EXTRA_CONTEXT" \
+        2>>"$REPORT_DIR/claude-stderr.log"
 }
+
+: > "$REPORT_DIR/claude-stderr.log"
+
+output=""
+for attempt in 1 2 3; do
+    if output=$(run_analysis); then
+        break
+    fi
+    output=""
+    echo "Claude analysis failed (attempt ${attempt}/3)"
+    if [[ "$attempt" -lt 3 ]]; then
+        sleep $((attempt * 60))
+    fi
+done
+
+if [[ -z "$output" ]]; then
+    # Notify on give-up — an unreported failure is indistinguishable from a healthy day.
+    echo "Claude analysis failed after 3 attempts. stderr:"
+    cat "$REPORT_DIR/claude-stderr.log"
+    if [[ -n "${NTFY_TOPIC:-}" ]]; then
+        printf 'Health report could not run — system state is UNKNOWN.\n\n%s' \
+            "$(tail -c 500 "$REPORT_DIR/claude-stderr.log")" | curl -s \
+            -H "Title: ❌ Yapit health report FAILED" \
+            -H "Priority: high" \
+            -H "Tags: health" \
+            -d @- \
+            "https://ntfy.sh/${NTFY_TOPIC}" > /dev/null || true
+    fi
+    exit 1
+fi
 
 # --output-format json returns a JSON array of events; extract the result event
 result_event=$(echo "$output" | jq -c '.[] | select(.type == "result")' 2>/dev/null || echo "$output" | jq -c 'select(.type == "result")' 2>/dev/null || echo '{}')
