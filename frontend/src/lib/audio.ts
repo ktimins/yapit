@@ -11,6 +11,12 @@ const SILENT_WAV = "data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEARKwAAI
 
 const LOAD_TIMEOUT_MS = 5_000;
 
+/** A load that stop() (or a newer load) superseded. The caller no longer owns the element. */
+export class StaleLoadError extends Error {}
+
+/** The browser loaded the audio but can't tell us how long it is — the container is unusable. */
+export class UnplayableAudioError extends Error {}
+
 export class AudioPlayer {
   private audioElement: HTMLAudioElement;
   private _tempo = 1.0;
@@ -20,6 +26,7 @@ export class AudioPlayer {
   private currentBlobUrl: string | null = null;
   private currentDurationMs = 0;
   private unlocked = false;
+  private cancelPendingLoad: (() => void) | null = null;
 
   constructor() {
     this.audioElement = document.createElement("audio");
@@ -52,47 +59,58 @@ export class AudioPlayer {
       });
   }
 
-  load(buffer: AudioBuffer): Promise<void> {
-    this.stop();
-    this.currentDurationMs = Math.round(buffer.duration * 1000);
-
-    const wavBlob = this.audioBufferToWav(buffer);
-    this.currentBlobUrl = URL.createObjectURL(wavBlob);
-
-    return this.waitForCanPlayThrough();
-  }
-
-  /** Load raw audio bytes (e.g. OGG Opus) directly — no decode/re-encode. Returns actual duration in ms. */
+  /** Load encoded audio bytes (OGG Opus from the server, WAV from browser synthesis). Returns actual duration in ms. */
   loadRawAudio(data: ArrayBuffer, mimeType: string): Promise<number> {
     this.stop();
 
     const blob = new Blob([data], { type: mimeType });
     this.currentBlobUrl = URL.createObjectURL(blob);
 
-    return this.waitForCanPlayThrough().then(() => {
-      this.currentDurationMs = Math.round(this.audioElement.duration * 1000);
+    return this.waitForCanPlayThrough(mimeType).then(() => {
+      const duration = this.audioElement.duration;
+      // A container the browser can't length reports Infinity/NaN here. Letting that
+      // through would silently poison progress and remaining-time for the whole session.
+      if (!Number.isFinite(duration)) {
+        throw new UnplayableAudioError(`[AudioPlayer] Non-finite duration (${duration}) for ${mimeType}`);
+      }
+      this.currentDurationMs = Math.round(duration * 1000);
       return this.currentDurationMs;
     });
   }
 
-  private waitForCanPlayThrough(): Promise<void> {
+  private waitForCanPlayThrough(mimeType: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const cleanup = () => {
         this.audioElement.removeEventListener("canplaythrough", onCanPlay);
         this.audioElement.removeEventListener("error", onError);
         clearTimeout(timer);
+        this.cancelPendingLoad = null;
       };
 
       const onCanPlay = () => { cleanup(); resolve(); };
       const onError = () => {
         cleanup();
-        reject(new Error("[AudioPlayer] Audio element error during load"));
+        // MEDIA_ERR_SRC_NOT_SUPPORTED: the browser can't decode this container at all,
+        // so no block of this document will play. Anything else may be one bad block.
+        const code = this.audioElement.error?.code;
+        if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+          reject(new UnplayableAudioError(`[AudioPlayer] Unsupported container: ${mimeType}`));
+          return;
+        }
+        reject(new Error(`[AudioPlayer] Audio element error during load (code ${code})`));
       };
       const timer = setTimeout(() => {
         console.debug("[AudioPlayer] waitForCanPlayThrough: timeout", { LOAD_TIMEOUT_MS });
         cleanup();
         reject(new Error("[AudioPlayer] Load timeout — canplaythrough not fired"));
       }, LOAD_TIMEOUT_MS);
+
+      // Without this, a superseded load keeps its listeners and timer: it either resolves off
+      // the *next* block's canplaythrough, or times out and looks like a genuine failure.
+      this.cancelPendingLoad = () => {
+        cleanup();
+        reject(new StaleLoadError("[AudioPlayer] Load superseded"));
+      };
 
       this.audioElement.addEventListener("canplaythrough", onCanPlay);
       this.audioElement.addEventListener("error", onError);
@@ -118,6 +136,7 @@ export class AudioPlayer {
   }
 
   stop(): void {
+    this.cancelPendingLoad?.();
     this.audioElement.pause();
     this.audioElement.currentTime = 0;
     this.stopProgressTracking();
@@ -172,56 +191,6 @@ export class AudioPlayer {
     if (this.progressInterval) {
       clearInterval(this.progressInterval);
       this.progressInterval = null;
-    }
-  }
-
-  private audioBufferToWav(buffer: AudioBuffer): Blob {
-    const numChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const format = 1; // PCM
-    const bitDepth = 16;
-
-    const length = buffer.length * numChannels;
-    const samples = new Int16Array(length);
-
-    for (let channel = 0; channel < numChannels; channel++) {
-      const channelData = buffer.getChannelData(channel);
-      for (let i = 0; i < buffer.length; i++) {
-        const sample = Math.max(-1, Math.min(1, channelData[i]));
-        samples[i * numChannels + channel] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-      }
-    }
-
-    const dataSize = samples.length * 2;
-    const headerSize = 44;
-    const wavBuffer = new ArrayBuffer(headerSize + dataSize);
-    const view = new DataView(wavBuffer);
-
-    this.writeString(view, 0, "RIFF");
-    view.setUint32(4, 36 + dataSize, true);
-    this.writeString(view, 8, "WAVE");
-
-    this.writeString(view, 12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, format, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * (bitDepth / 8), true);
-    view.setUint16(32, numChannels * (bitDepth / 8), true);
-    view.setUint16(34, bitDepth, true);
-
-    this.writeString(view, 36, "data");
-    view.setUint32(40, dataSize, true);
-
-    const wavSamples = new Int16Array(wavBuffer, headerSize);
-    wavSamples.set(samples);
-
-    return new Blob([wavBuffer], { type: "audio/wav" });
-  }
-
-  private writeString(view: DataView, offset: number, str: string): void {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
     }
   }
 }

@@ -5,9 +5,10 @@ import {
   type PlaybackEngineDeps,
   type Block,
   type AudioBufferData,
+  type WordTiming,
 } from "./playbackEngine";
 import type { Section } from "./sectionIndex";
-import type { AudioPlayer } from "./audio";
+import { StaleLoadError, UnplayableAudioError, type AudioPlayer } from "./audio";
 import type { Synthesizer } from "./synthesizer";
 
 // --- Test helpers ---
@@ -34,7 +35,7 @@ function makeSection(id: string, start: number, end: number): Section {
 
 function mockAudioPlayer(): AudioPlayer {
   return {
-    load: vi.fn().mockResolvedValue(undefined),
+    loadRawAudio: vi.fn().mockResolvedValue(1500),
     play: vi.fn().mockResolvedValue(undefined),
     pause: vi.fn(),
     stop: vi.fn(),
@@ -45,8 +46,12 @@ function mockAudioPlayer(): AudioPlayer {
   } as unknown as AudioPlayer;
 }
 
-const FAKE_BUFFER = {} as AudioBuffer;
-const FAKE_AUDIO: AudioBufferData = { buffer: FAKE_BUFFER, duration_ms: 1000 };
+const FAKE_AUDIO: AudioBufferData = {
+  rawAudio: new ArrayBuffer(8), mimeType: "audio/ogg", duration_ms: 1000,
+};
+/** A block whose length the server didn't report — known only once the element loads it. */
+const fakeRawAudio = (wordTimings?: WordTiming[]): AudioBufferData =>
+  ({ rawAudio: new ArrayBuffer(8), mimeType: "audio/ogg", duration_ms: 0, wordTimings });
 
 type SynthesizeHandler = (blockIdx: number, text: string, documentId: string, model: string, voice: string) => Promise<AudioBufferData | null>;
 
@@ -387,7 +392,9 @@ describe("createPlaybackEngine", () => {
   describe("duration correction", () => {
     it("adjusts totalDuration when actual audio duration differs from estimate", async () => {
       const synth = mockSynthesizer();
-      synth.onSynthesize = () => Promise.resolve({ buffer: FAKE_BUFFER, duration_ms: 1500 });
+      synth.onSynthesize = () => Promise.resolve({
+        rawAudio: new ArrayBuffer(8), mimeType: "audio/ogg", duration_ms: 1500,
+      });
       const d = makeDeps({ synthesizer: synth });
       const e = createPlaybackEngine(d);
 
@@ -401,6 +408,120 @@ describe("createPlaybackEngine", () => {
         // Block 0 synthesized with 1500ms → correction of +500ms
         expect(e.getSnapshot().totalDuration).toBeGreaterThan(3000);
       });
+    });
+  });
+
+  describe("server audio (compressed, duration known only at play time)", () => {
+    function rawDeps(onSynthesize?: () => Promise<AudioBufferData | null>) {
+      const synth = mockSynthesizer();
+      synth.onSynthesize = onSynthesize ?? (() => Promise.resolve(fakeRawAudio()));
+      return makeDeps({ synthesizer: synth });
+    }
+
+    it("plays compressed bytes directly and adopts the duration the element reports", async () => {
+      const d = rawDeps();
+      const e = createPlaybackEngine(d);
+      e.setVoice("kokoro", "af_heart");
+      e.setDocument("doc-1", makeBlocks(3)); // 3 * 1000ms estimate
+      e.play();
+
+      await vi.waitFor(() => {
+        expect(d.audioPlayer.loadRawAudio).toHaveBeenCalled();
+        // Block 0 reported 1500ms against a 1000ms estimate → +500ms
+        expect(e.getSnapshot().totalDuration).toBe(3500);
+      });
+    });
+
+    it("uses the server-reported duration before a block is played", async () => {
+      const d = rawDeps(() => Promise.resolve({
+        rawAudio: new ArrayBuffer(8), mimeType: "audio/ogg", duration_ms: 2500,
+      }));
+      // Never resolves: isolates the synthesis-time duration from the play-time correction.
+      (d.audioPlayer.loadRawAudio as Mock).mockImplementation(() => new Promise<number>(() => {}));
+      const e = createPlaybackEngine(d);
+      e.setVoice("kokoro", "af_heart");
+      e.setDocument("doc-1", makeBlocks(3));
+      e.play();
+
+      // All 3 blocks prefetch at 2500ms against a 1000ms estimate → +1500ms each
+      await vi.waitFor(() => expect(e.getSnapshot().totalDuration).toBe(7500));
+    });
+
+    it("discards a duration that arrives after the cursor moved on", async () => {
+      const d = rawDeps();
+      const pendingLoads: Array<(ms: number) => void> = [];
+      (d.audioPlayer.loadRawAudio as Mock).mockImplementation(
+        () => new Promise<number>((resolve) => pendingLoads.push(resolve)),
+      );
+      const e = createPlaybackEngine(d);
+      e.setVoice("kokoro", "af_heart");
+      e.setDocument("doc-1", makeBlocks(5)); // 5000ms estimate
+      e.play();
+
+      await vi.waitFor(() => expect(pendingLoads).toHaveLength(1));
+      e.seekToBlock(2);
+      await vi.waitFor(() => expect(pendingLoads).toHaveLength(2));
+
+      // Block 0's load finally resolves — it belongs to a block we already left.
+      pendingLoads[0](9999);
+      await Promise.resolve();
+      expect(e.getSnapshot().totalDuration).toBe(5000);
+
+      // The current block's own load still counts.
+      pendingLoads[1](2000);
+      await vi.waitFor(() => expect(e.getSnapshot().totalDuration).toBe(6000));
+    });
+
+    it("stays on the seeked block when a superseded load rejects", async () => {
+      const d = rawDeps();
+      const rejects: Array<(err: Error) => void> = [];
+      (d.audioPlayer.loadRawAudio as Mock).mockImplementation(
+        () => new Promise<number>((_, reject) => rejects.push(reject)),
+      );
+      const e = createPlaybackEngine(d);
+      e.setVoice("kokoro", "af_heart");
+      e.setDocument("doc-1", makeBlocks(30));
+      e.play();
+
+      await vi.waitFor(() => expect(rejects).toHaveLength(1));
+      e.seekToBlock(20);
+      expect(e.getSnapshot().currentBlock).toBe(20);
+
+      // Block 0's abandoned load finally gives up — it must not move the cursor.
+      rejects[0](new StaleLoadError("superseded"));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(e.getSnapshot().currentBlock).toBe(20);
+    });
+
+    it("stops rather than skipping every block when audio is unplayable", async () => {
+      const d = rawDeps();
+      (d.audioPlayer.loadRawAudio as Mock).mockRejectedValue(
+        new UnplayableAudioError("unsupported container"),
+      );
+      const e = createPlaybackEngine(d);
+      e.setVoice("kokoro", "af_heart");
+      e.setDocument("doc-1", makeBlocks(10));
+      e.play();
+
+      await vi.waitFor(() => expect(e.getSnapshot().status).toBe("stopped"));
+      // Not a silent fast-forward through the document.
+      expect(e.getSnapshot().currentBlock).toBe(0);
+      // And the user is told why, rather than play doing nothing.
+      expect(e.getSnapshot().playbackError).toMatch(/can't play/i);
+    });
+
+    it("clears the playback error when the user presses play again", async () => {
+      const d = rawDeps();
+      (d.audioPlayer.loadRawAudio as Mock).mockRejectedValue(new UnplayableAudioError("nope"));
+      const e = createPlaybackEngine(d);
+      e.setVoice("kokoro", "af_heart");
+      e.setDocument("doc-1", makeBlocks(3));
+      e.play();
+      await vi.waitFor(() => expect(e.getSnapshot().playbackError).toBeTruthy());
+
+      (d.audioPlayer.loadRawAudio as Mock).mockResolvedValue(1500);
+      e.play();
+      expect(e.getSnapshot().playbackError).toBeNull();
     });
   });
 

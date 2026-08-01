@@ -25,8 +25,6 @@ export interface UsePlaybackEngineReturn {
   getBrowserTTSStatus: () => {
     error: string | null;
     device: "webgpu" | "wasm" | null;
-    loading: boolean;
-    loadingProgress: number;
   };
 }
 
@@ -42,17 +40,10 @@ export function usePlaybackEngine(
   const apiRef = useRef(api);
   apiRef.current = api;
 
-  // AudioContext needed for browser synthesis (createBuffer).
-  const audioContextRef = useRef<AudioContext | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const engineRef = useRef<PlaybackEngine | null>(null);
   const serverSynthRef = useRef<ServerSynthesizerInstance | null>(null);
   const browserSynthRef = useRef<BrowserSynthesizerInstance | null>(null);
-
-  if (!audioContextRef.current) {
-    audioContextRef.current = new AudioContext();
-  }
-  const audioContext = audioContextRef.current;
 
   if (!audioPlayerRef.current) {
     audioPlayerRef.current = new AudioPlayer();
@@ -92,13 +83,17 @@ export function usePlaybackEngine(
         const response = await apiRef.current.get(url, { responseType: "arraybuffer" });
         return response.data;
       },
-      decodeAudio: (data: ArrayBuffer) => audioContext.decodeAudioData(data.slice(0)),
     });
   }
 
-  if (!browserSynthRef.current) {
-    browserSynthRef.current = createBrowserSynthesizer({ audioContext });
-  }
+  // Created on first use: constructing it spawns the Kokoro worker, which pulls
+  // ~1.8MB of JS into a second isolate that server-side voices never touch.
+  const getBrowserSynth = useCallback(() => {
+    if (!browserSynthRef.current) {
+      browserSynthRef.current = createBrowserSynthesizer();
+    }
+    return browserSynthRef.current;
+  }, []);
 
   const originalPlayRef = useRef<(() => void) | null>(null);
 
@@ -115,13 +110,9 @@ export function usePlaybackEngine(
     originalPlayRef.current = engine.play;
     const audioPlayer = audioPlayerRef.current!;
     (engine as { play: () => void }).play = () => {
-      // Both fire synchronously in the user gesture context (tap/click handler).
+      // Fires synchronously in the user gesture context (tap/click handler):
       // unlock() registers the HTMLAudioElement with the browser for programmatic play.
-      // resume() unlocks AudioContext for browser synthesis (createBuffer).
       audioPlayer.unlock();
-      if (audioContext.state === "suspended") {
-        audioContext.resume().catch(() => {});
-      }
       originalPlayRef.current!();
     };
   }
@@ -137,10 +128,10 @@ export function usePlaybackEngine(
   useEffect(() => {
     const synth = isServerSideModel(voiceSelection.model)
       ? serverSynthRef.current!
-      : browserSynthRef.current!;
+      : getBrowserSynth();
     engine.setSynthesizer(synth);
     engine.setVoice(voiceSelection.model, voiceSelection.voiceSlug);
-  }, [voiceSelection.model, voiceSelection.voiceSlug, engine]);
+  }, [voiceSelection.model, voiceSelection.voiceSlug, engine, getBrowserSynth]);
 
   // Sync sections — derive collapsed (skipped) set from expandedSections
   const collapsedSections = useMemo(
@@ -151,29 +142,13 @@ export function usePlaybackEngine(
     engine.setSections(sections, collapsedSections);
   }, [sections, collapsedSections, engine]);
 
-  // Keep AudioContext alive during playback for ongoing synthesis/decoding.
-  // If suspended (mobile app switch, phone call), browser synthesis may fail.
-  useEffect(() => {
-    const handler = () => {
-      const engineStatus = engine.getSnapshot().status;
-      console.log(`[AudioContext] State changed to "${audioContext.state}" (engine: ${engineStatus})`);
-      if (audioContext.state === "suspended" && (engineStatus === "playing" || engineStatus === "buffering")) {
-        console.warn("[AudioContext] Suspended while engine active — resuming for synthesis...");
-        audioContext.resume().catch(() => {});
-      }
-    };
-    audioContext.addEventListener("statechange", handler);
-    return () => audioContext.removeEventListener("statechange", handler);
-  }, [audioContext, engine]);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       engine.destroy();
       browserSynthRef.current?.destroy();
-      audioContext.close();
     };
-  }, [engine, audioContext]);
+  }, [engine]);
 
   // Getter functions for TTS status — called by the overlay during its render
   // to get fresh values without requiring a shell re-render.
@@ -182,12 +157,11 @@ export function usePlaybackEngine(
     recoverable: serverSynthRef.current!.isRecoverable(),
   }), []);
 
-  const getBrowserTTSStatus = useCallback(() => ({
-    error: browserSynthRef.current!.getError(),
-    device: browserSynthRef.current!.getDevice(),
-    loading: browserSynthRef.current!.isLoading(),
-    loadingProgress: browserSynthRef.current!.getLoadingProgress(),
-  }), []);
+  const getBrowserTTSStatus = useCallback(() => {
+    const synth = browserSynthRef.current;
+    if (!synth) return { error: null, device: null };
+    return { error: synth.getError(), device: synth.getDevice() };
+  }, []);
 
   return {
     engine,

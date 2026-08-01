@@ -26,6 +26,8 @@ export interface WSBlockStatusMessage {
   model_slug?: string;
   voice_slug?: string;
   word_timestamps?: string;
+  /** Exact synthesized length. Null until the billing consumer has written it for a cache hit. */
+  duration_ms?: number | null;
 }
 
 export interface WSEvictedMessage {
@@ -52,7 +54,6 @@ interface ServerSynthesizerDeps {
   sendWS: (msg: WSSynthesizeRequest | WSCursorMoved) => void;
   checkWSConnected: () => boolean;
   fetchAudio: (url: string) => Promise<ArrayBuffer>;
-  decodeAudio?: (data: ArrayBuffer) => Promise<AudioBuffer>;
 }
 
 /**
@@ -244,13 +245,13 @@ export function createServerSynthesizer(deps: ServerSynthesizerDeps): Synthesize
       } catch { /* ignore malformed timestamps */ }
 
       deps.fetchAudio(msg.audio_url)
-        .then(async (arrayBuffer) => {
-          if (deps.decodeAudio) {
-            const audioBuffer = await deps.decodeAudio(arrayBuffer);
-            req.resolve({ buffer: audioBuffer, duration_ms: Math.round(audioBuffer.duration * 1000), wordTimings });
-          } else {
-            req.resolve({ rawAudio: arrayBuffer, duration_ms: 0, wordTimings });
-          }
+        .then((arrayBuffer) => {
+          req.resolve({
+            rawAudio: arrayBuffer,
+            mimeType: "audio/ogg",
+            duration_ms: msg.duration_ms ?? 0,
+            wordTimings,
+          });
         })
         .catch((err) => {
           console.error(`[ServerSynth] Failed to fetch audio for block ${block_idx}:`, err);

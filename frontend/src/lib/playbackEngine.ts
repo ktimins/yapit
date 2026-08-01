@@ -1,4 +1,5 @@
 import type { AudioPlayer } from "./audio";
+import { StaleLoadError, UnplayableAudioError } from "./audio";
 import type { Section } from "./sectionIndex";
 import { findSectionForBlock } from "./sectionIndex";
 import type { Synthesizer } from "./synthesizer";
@@ -18,9 +19,10 @@ export interface WordTiming {
   e: number;  // end (seconds)
 }
 
+/** Encoded audio as it arrives: OGG Opus from the server, WAV from browser synthesis. */
 export interface AudioBufferData {
-  buffer?: AudioBuffer;
-  rawAudio?: ArrayBuffer;
+  rawAudio: ArrayBuffer;
+  mimeType: string;
   duration_ms: number;
   wordTimings?: WordTiming[];
 }
@@ -36,7 +38,8 @@ export interface PlaybackSnapshot {
   blockStates: BlockVisualState[];
   audioProgress: number;
   totalDuration: number;
-
+  /** Set when playback stopped for a reason the user needs to see (unsupported audio format). */
+  playbackError: string | null;
 }
 
 // --- Configuration ---
@@ -104,6 +107,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
   let audioProgress = 0;
   let totalDuration = 0;
   let initialTotalEstimate = 0;
+  let playbackError: string | null = null;
   const durationCorrections = new Map<number, number>();
 
   const audioCache = new Map<VariantKey, AudioBufferData>();
@@ -252,7 +256,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
     if (audio) {
       isSynthesizingCurrent = false;
       notify();
-      await startAudioPlayback(audio);
+      await startAudioPlayback(audio, blockIdx);
     } else {
       isSynthesizingCurrent = true;
       notify();
@@ -276,32 +280,46 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
         return;
       }
       notify();
-      await startAudioPlayback(audioData);
+      await startAudioPlayback(audioData, blockIdx);
     }
 
     checkAndRefillBuffer();
     evictOldBlocks();
   }
 
-  async function startAudioPlayback(audioData: AudioBufferData) {
+  async function startAudioPlayback(audioData: AudioBufferData, blockIdx: number) {
     deps.audioPlayer.setOnEnded(() => {
       stopWordTracking();
       blockStartTime += audioData.duration_ms;
       advanceToNext();
     });
     try {
-      if (audioData.rawAudio) {
-        const actualMs = await deps.audioPlayer.loadRawAudio(audioData.rawAudio, "audio/ogg");
-        audioData.duration_ms = actualMs;
-        const blk = blocks[currentBlock];
-        if (blk) recordDurationCorrection(blk, actualMs);
-      } else if (audioData.buffer) {
-        await deps.audioPlayer.load(audioData.buffer);
+      const actualMs = await deps.audioPlayer.loadRawAudio(audioData.rawAudio, audioData.mimeType);
+      // Loading shares one <audio> element, so a seek during the await lands us
+      // on a different block — anything past this point would apply to the wrong one.
+      if (currentBlock !== blockIdx || status !== "playing") return;
+      audioData.duration_ms = actualMs;
+      const blk = blocks[blockIdx];
+      if (blk) {
+        recordDurationCorrection(blk, actualMs);
+        notify(); // totalDuration changed; the snapshot is memoized until invalidated
       }
       await deps.audioPlayer.play();
       startWordTracking(audioData);
-      console.debug("[PlaybackEngine] startAudioPlayback: playing", { blockIdx: currentBlock });
+      console.debug("[PlaybackEngine] startAudioPlayback: playing", { blockIdx });
     } catch (err) {
+      // A superseded load belongs to a block we already left — advancing here would
+      // step past whatever the user actually seeked to.
+      if (err instanceof StaleLoadError) return;
+      if (currentBlock !== blockIdx || status !== "playing") return;
+      if (err instanceof UnplayableAudioError) {
+        // Not one bad block: nothing in this document will play. Stop instead of
+        // fast-forwarding through every block in silence.
+        console.error("[PlaybackEngine] Audio unplayable in this browser, stopping:", err);
+        playbackError = "This browser can't play this audio format";
+        engineStop();
+        return;
+      }
       console.error("[PlaybackEngine] Audio playback failed, skipping block:", err);
       advanceToNext();
     }
@@ -511,6 +529,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
     if (status === "playing" || status === "buffering") return;
     if (!blocks.length) return;
 
+    playbackError = null;
     synthesizer.clearError();
 
     let startBlock = currentBlock;
@@ -623,6 +642,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
   }
 
   function setDocument(newDocumentId: string, newBlocks: Block[]) {
+    playbackError = null;
     deps.audioPlayer.stop();
 
     synthesizer.cancelAll();
@@ -698,6 +718,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
       blockStates: deriveBlockStates(),
       audioProgress,
       totalDuration,
+      playbackError,
     };
     end();
     return snapshot;

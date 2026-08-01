@@ -1,33 +1,26 @@
 import type { Synthesizer } from "./synthesizer";
 import type { AudioBufferData } from "./playbackEngine";
 import type { WorkerMessage, TTSDevice, TTSDtype } from "./browserTTS/types";
+import { encodeWavPcm16 } from "./wav";
 
 interface PendingRequest {
   resolve: (data: AudioBufferData | null) => void;
 }
 
-interface BrowserSynthesizerDeps {
-  audioContext: AudioContext;
-}
-
 /**
  * Browser-side TTS synthesizer using a Web Worker running Kokoro.js.
  * Manages worker lifecycle, cancellation via generation counter,
- * and converts raw PCM to AudioBuffer.
+ * and encodes raw PCM to WAV for the audio element.
  */
-export function createBrowserSynthesizer(deps: BrowserSynthesizerDeps): Synthesizer & {
+export function createBrowserSynthesizer(): Synthesizer & {
   getDevice(): TTSDevice | null;
   getDtype(): TTSDtype | null;
-  isLoading(): boolean;
-  getLoadingProgress(): number;
 } {
   const pending = new Map<string, PendingRequest>();
   let generation = 0;
   let lastError: string | null = null;
   let device: TTSDevice | null = null;
   let dtype: TTSDtype | null = null;
-  let loading = false;
-  let loadingProgress = 0;
 
   const worker = new Worker(
     new URL("./browserTTS/worker.ts", import.meta.url),
@@ -41,15 +34,6 @@ export function createBrowserSynthesizer(deps: BrowserSynthesizerDeps): Synthesi
       case "device":
         device = msg.device;
         dtype = msg.dtype;
-        loading = true;
-        break;
-
-      case "progress":
-        loadingProgress = msg.progress;
-        break;
-
-      case "ready":
-        loading = false;
         break;
 
       case "audio": {
@@ -59,10 +43,12 @@ export function createBrowserSynthesizer(deps: BrowserSynthesizerDeps): Synthesi
         lastError = null;
 
         const audio = new Float32Array(msg.audioData);
-        const audioBuffer = deps.audioContext.createBuffer(1, audio.length, msg.sampleRate);
-        audioBuffer.getChannelData(0).set(audio);
         const durationMs = Math.round((audio.length / msg.sampleRate) * 1000);
-        req.resolve({ buffer: audioBuffer, duration_ms: durationMs });
+        req.resolve({
+          rawAudio: encodeWavPcm16(audio, msg.sampleRate),
+          mimeType: "audio/wav",
+          duration_ms: durationMs,
+        });
         break;
       }
 
@@ -83,7 +69,6 @@ export function createBrowserSynthesizer(deps: BrowserSynthesizerDeps): Synthesi
 
   worker.onerror = (e) => {
     lastError = e.message || "Worker failed to load";
-    loading = false;
   };
 
   function synthesize(
@@ -133,8 +118,6 @@ export function createBrowserSynthesizer(deps: BrowserSynthesizerDeps): Synthesi
     destroy,
     getDevice: () => device,
     getDtype: () => dtype,
-    isLoading: () => loading,
-    getLoadingProgress: () => loadingProgress,
   };
 }
 
