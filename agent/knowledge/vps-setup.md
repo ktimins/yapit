@@ -27,7 +27,7 @@ VPS (Hetzner)
 - **Provider:** Hetzner (Nuremberg, server name `yapit-prod-2`)
 - **Type:** CPX32 (4 vCPU, 8 GB RAM, 160 GB SSD)
 - **Domain:** yapit.md
-- **Address:** single source of truth is `VPS_HOST` in `.env.sops` (`root@<tailscale-ip>`, decrypt via `make prod-env`) — all scripts read it from `.env`. Public IP: Hetzner console or `hcloud server list`.
+- **Address:** everything goes by name — `VPS_HOST=yapit-prod` in `.env.sops` (all scripts read it from `.env`), which resolves via the `yapit-prod` ssh alias (dotfiles, `nix/home/common.nix`) for ssh/scp and via Tailscale MagicDNS for direct connections (`WORKER_REDIS_URL=redis://yapit-prod:6379/0`). The raw Tailscale IP lives in exactly one place: the dotfiles ssh alias. On server migration, update that alias + the tailnet hostname and nothing else. Public IP: Hetzner console or `hcloud server list` (only Cloudflare DNS references it).
 - **Swap:** 4 GB swapfile (`/swapfile`, swappiness 10) — Hetzner images ship without swap; the stack idles at ~6.5 GB so this is OOM headroom, not working memory
 - **Docker log rotation:** `/etc/docker/daemon.json` — 50MB x 3 files per container
 - **`no-new-privileges: true`** in daemon.json — prevents privilege escalation via setuid binaries in all containers. Required because Swarm ignores per-service `security_opt`.
