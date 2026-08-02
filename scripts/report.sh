@@ -93,6 +93,8 @@ $BILLING_RECON"
 read -r -d '' PROMPT << 'EOF' || true
 You are a diagnostic agent analyzing system health for Yapit TTS.
 
+**Infra note (2026-08-02):** prod migrated to a smaller Hetzner server (CPX32: 4 vCPU, 8 GB RAM + 8 GB swap, 160 GB disk). kokoro-cpu replicas 4→2, yolo-cpu 4→1 (external GPU workers unchanged); cache caps now audio 30 GB / extraction 30 GB / document 5 GB. Disk history restarted with the new server — "(no history yet)" or a short history is expected, not data loss. Don't compare absolute disk totals or worker counts against pre-migration values.
+
 ## System Architecture
 
 Yapit is a text-to-speech platform with these components:
