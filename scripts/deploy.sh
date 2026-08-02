@@ -67,7 +67,8 @@ scp scripts/sync-cf-firewall.sh "$VPS_HOST:/opt/yapit/sync-cf-firewall.sh"
 # Snapshot gateway UpdateStatus before deploy so we can detect new updates vs stale state.
 # UpdateStatus.CompletedAt persists from previous deploys — comparing lets us distinguish
 # "completed from last time" vs "completed just now" vs "never updated" (null).
-GW_PRE_DEPLOY=$(ssh "$VPS_HOST" "docker service inspect ${STACK_NAME}_gateway --format '{{json .UpdateStatus}}'") || die "Failed to snapshot gateway state (SSH/inspect error)"
+# A missing service (fresh server, first deploy) yields "null" — only SSH failure is fatal.
+GW_PRE_DEPLOY=$(ssh "$VPS_HOST" "docker service inspect ${STACK_NAME}_gateway --format '{{json .UpdateStatus}}' 2>/dev/null || echo null") || die "Failed to snapshot gateway state (SSH error)"
 
 # --- Deploy stack ---
 log "Deploying stack for commit: ${GIT_COMMIT:0:12}"

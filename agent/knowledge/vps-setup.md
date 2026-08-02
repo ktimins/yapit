@@ -24,13 +24,15 @@ VPS (Hetzner)
 
 ## VPS Details
 
-- **IP:** 46.224.195.97
-- **Provider:** Hetzner
-- **Type:** CX53 (16 vCPU, 32 GB RAM, 320 GB SSD)
+- **Provider:** Hetzner (Nuremberg, server name `yapit-prod-2`)
+- **Type:** CPX32 (4 vCPU, 8 GB RAM, 160 GB SSD)
 - **Domain:** yapit.md
-- **Tailscale IP:** 100.87.244.58 (hostname `yapit-prod`)
+- **Address:** single source of truth is `VPS_HOST` in `.env.sops` (`root@<tailscale-ip>`, decrypt via `make prod-env`) — all scripts read it from `.env`. Public IP: Hetzner console or `hcloud server list`.
+- **Swap:** 4 GB swapfile (`/swapfile`, swappiness 10) — Hetzner images ship without swap; the stack idles at ~6.5 GB so this is OOM headroom, not working memory
 - **Docker log rotation:** `/etc/docker/daemon.json` — 50MB x 3 files per container
 - **`no-new-privileges: true`** in daemon.json — prevents privilege escalation via setuid binaries in all containers. Required because Swarm ignores per-service `security_opt`.
+
+Migrated 2026-08-02 from a CPX62 (16 vCPU/32 GB/640 GB, `yapit-prod`) to cut cost ~€21/mo; worker replicas and cache limits were sized down to fit (see `.env.prod`). Final pre-migration snapshot: image 415528056. The old server is retired; delete it (and the snapshot, eventually) once the new box has proven itself.
 
 ## Initial Setup
 
@@ -39,7 +41,13 @@ VPS (Hetzner)
 ```bash
 ssh root@<VPS_IP>
 apt update && apt upgrade -y
-apt install -y sqlite3  # For metrics DB access
+apt install -y sqlite3 jq rsync  # sqlite3: metrics DB access; jq: firewall sync script
+# hcloud CLI (firewall sync) — manual binary install:
+curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz -C /usr/local/bin hcloud
+# Swapfile (Hetzner images have none):
+fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo "/swapfile none swap sw 0 0" >> /etc/fstab
+echo "vm.swappiness=10" > /etc/sysctl.d/99-swappiness.conf && sysctl -w vm.swappiness=10
 ```
 
 ### 2. Install Docker
@@ -211,7 +219,7 @@ VPS paths:
 - Script: `/opt/yapit/sync-cf-firewall.sh` (synced automatically by `deploy.sh`)
 - Env (token, firewall name, ntfy topic): `/opt/yapit/.env.firewall` (mode 600)
 - Log: `/var/log/cf-firewall-sync.log`
-- Cron: `0 * * * *` (hourly)
+- Cron: `0 * * * *` (hourly) — **created manually** (`crontab -e`), deploy.sh only syncs the script; on a fresh server the crontab entry must be added by hand
 
 **UFW:** No rules (SSH removed). Hetzner firewall is the real gate, Docker bypasses UFW anyway.
 
@@ -254,7 +262,7 @@ Both of these bind to `0.0.0.0` (all interfaces):
 ```yaml
 # Short syntax - IP is silently ignored
 ports:
-  - "100.87.244.58:6379:6379"
+  - "<tailscale-ip>:6379:6379"
 
 # Long syntax with mode: host - still binds to 0.0.0.0
 ports:
@@ -290,9 +298,11 @@ Or remove and redeploy the entire stack.
 
 ## DNS Records (Cloudflare)
 
-Create A records pointing to VPS IP (proxied):
-- `yapit.md` → `46.224.195.97`
-- `auth.yapit.md` → `46.224.195.97`
+Create A records pointing to the VPS public IP (proxied):
+- `yapit.md`
+- `auth.yapit.md`
+
+(`www.yapit.md` and `api.yapit.md` also exist and point at the same IP, but Traefik only routes the two hosts above — the extra records return 404 at the origin.)
 
 ## Docker Compose Labels
 
