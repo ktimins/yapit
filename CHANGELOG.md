@@ -6,6 +6,10 @@
 * Stale pre-fix audio for non-English voices is invalidated automatically (data migration changes their cache keys; old entries fall out of the LRU cache).
 * Voice previews now speak the voice's own language instead of accented English.
 * Word-level highlighting is now English-only: Spanish/French/Hindi/Italian/Portuguese voices previously showed highlighting (synced to the wrong-sounding audio); Kokoro's non-English pipelines don't produce word timestamps.
+* Greatly reduced playback memory usage on long documents — audio stays Opus-encoded instead of being cached as decoded PCM, and the in-browser TTS worker now loads only when a browser voice is actually used.
+* Billing consumer self-heals its Redis consumer group after Redis data loss; selfhost Redis now persists to a volume (append-only) so unacked billing events survive container recreation.
+* Disabled ClickHouse self-telemetry logs — they grew unbounded (97GB on prod). Only affects auth-enabled setups.
+* `GET /documents/{id}` now returns `created` (used by the yapit CLI to record when a source was captured).
 * **Breaking (selfhost):** New required env var `RATELIMIT_ENABLED` — add `RATELIMIT_ENABLED=true` to your `.env.selfhost` (see `.env.selfhost.example`), or the gateway will fail to start.
 
 ## v0.3.2 — 2026-07-20
