@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 — 2026-08-02
 
 * Fixed non-English Kokoro voices reading text with English pronunciation — each language now uses its own G2P pipeline; Japanese and Chinese (previously silent or spelling out "japanese letter"/"chinese letter") now work. #87
 * Stale pre-fix audio for non-English voices is invalidated automatically (data migration changes their cache keys; old entries fall out of the LRU cache).
