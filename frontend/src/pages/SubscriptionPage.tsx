@@ -280,7 +280,7 @@ const SubscriptionPage = () => {
         </p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 min-[1060px]:grid-cols-3 gap-6">
         {sortedPlans.map((plan) => {
           const isCurrent = plan.tier === currentTier;
           const isUpgrade = TIER_ORDER.indexOf(plan.tier) > TIER_ORDER.indexOf(currentTier);
