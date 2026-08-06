@@ -69,9 +69,9 @@ const tipLink = (text: string, hash: string) => (
 );
 
 const PLAN_FEATURES: Partial<Record<PlanTier, React.ReactNode[]>> = {
-  free: [tipLink("Kokoro TTS (local, English)", "local-tts"), "100 documents"],
-  voice: ["Unlimited Kokoro TTS (server)", "500 documents", "Cancel anytime during trial"],
-  basic: ["Unlimited Kokoro TTS (server)", "1,000 documents", tipLink("~500 AI-transformed pages*", "ai-transform"), tipLink("Unused quota accumulates**", "billing"), "Cancel anytime during trial"],
+  free: [tipLink("Kokoro TTS (local, English)", "local-tts"), "50 MB of documents (~250)*"],
+  voice: ["Unlimited Kokoro TTS (server)", "500 MB of documents (~2,500)*", "Cancel anytime during trial"],
+  basic: ["Unlimited Kokoro TTS (server)", "500 MB of documents (~2,500)*", tipLink("~500 AI-transformed pages*", "ai-transform"), tipLink("Unused quota accumulates**", "billing"), "Cancel anytime during trial"],
 };
 
 const SubscriptionPage = () => {
@@ -189,7 +189,7 @@ const SubscriptionPage = () => {
   );
 
   return (
-    <div className="max-w-[1000px] mx-auto py-8 px-6">
+    <div className="max-w-[1120px] mx-auto py-8 px-6">
       <Button variant="ghost" className="mb-8" onClick={() => navigate(-1)}>
         <ArrowLeft className="mr-2 h-5 w-5" />
         Back
@@ -375,7 +375,7 @@ const SubscriptionPage = () => {
       </div>
 
       <p className="mt-8 text-center text-sm text-muted-foreground">
-        *Estimates vary by content complexity.
+        *Estimates vary by content: a typical article is ~25–100 kB, a book several MB; pages with dense tables or figures use more AI tokens.
         <br />
         **Capped at 10M AI transformation tokens.
         <br />
