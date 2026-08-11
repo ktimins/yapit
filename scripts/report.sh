@@ -73,7 +73,7 @@ fi
 
 EXTRA_CONTEXT="$BASE_CONTEXT
 
-## METRICS FRESHNESS (deterministic check — read this first)
+## METRICS FRESHNESS (last metrics event age vs log activity, pre-computed)
 
 $METRICS_FRESHNESS
 
@@ -119,7 +119,7 @@ Yapit is a text-to-speech platform with these components:
 - Results feed into Gemini extraction
 
 **Reliability mechanisms:**
-- **Visibility timeout**: If worker takes too long (TTS: 30s, YOLO: 10s), job is requeued
+- **Visibility timeout**: If worker takes too long (TTS: 20s, YOLO: 10s), job is requeued
 - **DLQ (Dead Letter Queue)**: Jobs that fail after max retries — indicates systematic failure
 
 **Models:**
@@ -130,7 +130,7 @@ Yapit is a text-to-speech platform with these components:
 ## Data Locations
 
 - **Metrics DB**: data/metrics.duckdb
-  - `metrics_event` — raw events (last 100k)
+  - `metrics_event` — raw events (30-day retention)
   - `metrics_hourly` — hourly aggregates
   - `metrics_daily` — daily aggregates
 
@@ -177,7 +177,7 @@ Yapit is a text-to-speech platform with these components:
 - ANY `error` event is a red flag. These represent failures that may silently drop work — e.g., a synthesis result that completed but couldn't be cached, leaving the user with no audio.
 - **`Background task <name> crashed` / `Background task <name> exited unexpectedly`** — a long-lived loop (billing-consumer, result-consumer, cache-persister, tts-visibility, yolo-visibility, batch-poller, cache-lru-flush, cache-maintenance, usage-log-cleanup, guest-cleanup, billing-sync, openai-tts-dispatcher, metrics-writer) is **gone** and is not coming back. Whatever that loop does has stopped silently for the rest of the process lifetime. **P0 — a gateway restart is required to recover.** Identify the loop from the name and report what has stopped (e.g. billing-consumer = nothing is being billed).
 - **`Billing consumer group missing (Redis reset?), re-creating`** (WARNING, `yapit.gateway.billing_consumer`) — Redis was recreated and the consumer group was rebuilt automatically. One occurrence per Redis restart is expected and self-healing; nothing to do. A *repeating* pattern means Redis is restarting in a loop — investigate that instead.
-- Since retries now back off exponentially (1s→60s), a stuck loop produces roughly 1 error/minute rather than 1/second. **Do not read a low error count as a minor problem** — check the time span between first and last occurrence, not just the count.
+- Stuck-loop retries back off exponentially (1s→60s), so a stuck loop produces roughly 1 error/minute. Judge such errors by the span between first and last occurrence — a low count can still be a dead loop.
 
 **Billing/Webhooks:**
 - `stripe_webhook` — Stripe webhook processing
@@ -201,8 +201,8 @@ Yapit is a text-to-speech platform with these components:
 
 ## What to Analyze
 
-### Metrics freshness — CHECK FIRST
-The METRICS FRESHNESS section above is computed deterministically. If it reports STALE (🚨), that is the lead issue of the report (P0): the metrics pipeline is down, and the metrics DB only covers the period before the gap. Do NOT interpret the empty window as "no traffic" or "no errors" — analyze the blackout window from logs instead, and state explicitly which findings are metrics-based vs log-based.
+### Metrics freshness
+A STALE verdict in the METRICS FRESHNESS section is the lead issue of the report (P0): the metrics pipeline is down, and the metrics DB only covers the period before the gap — the window after it is unobserved, not quiet. Analyze that window from logs, and label each finding metrics-based or log-based.
 
 The metrics writer self-heals: it buffers events (bounded, 10k) and retries with backoff when the metrics DB is unreachable. Log lines to know (module `yapit.gateway.metrics`):
 - `Metrics DB unavailable at startup (...); writer will keep retrying` / `Metrics DB write failed (...); buffering events and retrying` (ERROR) — outage started
@@ -211,7 +211,7 @@ The metrics writer self-heals: it buffers events (bounded, 10k) and retries with
 An outage-start ERROR with no matching recovery = the pipeline is down right now.
 
 ### Errors — HIGHEST PRIORITY
-This is the most important section. Don't just count errors — read the actual error messages and investigate.
+Read the actual error messages and investigate — a count alone is not analysis.
 
 **Metrics DB errors:**
 - `error` events (gateway-internal) — ANY nonzero count is a red flag. Read `data.message` for each. These represent silent failures that may cause user-visible breakage (e.g., audio not playing, results disappearing).
@@ -221,7 +221,7 @@ This is the most important section. Don't just count errors — read the actual 
 - `job_requeued` — occasional is fine (transient), sustained pattern = worker issues.
 
 **Log file errors (data/logs/*.jsonl):**
-- **IMPORTANT: Check the time range of gateway.jsonl first** (first and last entry timestamps). The file can span weeks. Start analysis with the last 24-48h — filter by `.record.time.repr > "YYYY-MM-DD"`. Total error counts across the whole file are misleading without date context. Older entries are useful for establishing baselines or investigating trends when something looks suspicious.
+- **Check the time range of gateway.jsonl first** (first and last entry timestamps). The file can span weeks. Start analysis with the last 24-48h — filter by `.record.time.repr > "YYYY-MM-DD"`. Total error counts across the whole file are misleading without date context. Older entries are useful for establishing baselines or investigating trends when something looks suspicious.
 - Scan for ERROR and WARNING level entries within the recent window. Don't skip this even if metrics look clean — some errors only appear in logs.
 - For each distinct error, report: the error message, count, and time range.
 - ERROR level in logs — stack traces, exceptions (include request context: method, path, user_id, request_id)
@@ -232,10 +232,7 @@ This is the most important section. Don't just count errors — read the actual 
 - Warnings often precede errors — look for escalation patterns
 
 ### Queue Health
-- `queue_depth` values in `synthesis_queued` — sustained >20 means workers can't keep up
-- `queue_wait_ms` in `synthesis_complete`:
-  - TTS: <15s normal, >25s sustained = capacity issue
-  - Detection: <5s normal, >8s sustained = capacity issue
+- `queue_depth` in `synthesis_queued`, `queue_wait_ms` in `synthesis_complete` — thresholds in the Normal vs Concerning table; sustained breaches = capacity issue
 
 ### Worker Performance
 - `worker_latency_ms` per `worker_id` — compare workers, find outliers
@@ -297,7 +294,7 @@ See the BILLING RECONCILIATION section — event counts and character totals are
 Events older than 3-7 days can be ignored unless part of a larger pattern / investigation.
 E.g. items on the DLQ from >7 days ago are almost certainly already taken care of.
 
-One-time "short redis blips / outages" are caused by deployment and not worth flagging (unless cadence does not match deploy logs or is higher than the push frequency to main.
+One-time short Redis blips coincide with deploys and are not worth flagging; flag them when their cadence exceeds deploy frequency or doesn't line up with deploy times.
 
 ## Log Investigation
 
@@ -367,9 +364,7 @@ jq -r '[.record.extra | keys[]] | .[]' gateway.jsonl | sort | uniq -c | sort -rn
 
 ## Output Format
 
-Don't lead with any throat-clearing like "I have everything I need" or "Writing the report" or "I have the complete picture".
-
-Start with status:
+Open with the status line (no throat-clearing preamble):
 - ✅ **All nominal** — no issues
 - ⚠️ **Issues detected** — problems found
 - 🔍 **Anomalies noted** — unusual patterns worth noting (no/low traffic is not an anomaly, unless there's a sudden change)

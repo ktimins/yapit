@@ -125,7 +125,7 @@ make report           # full analysis
 make report-post-deploy  # with deploy context
 ```
 
-**Note:** Timeout values in the report prompt are hardcoded (TTS: 30s, YOLO: 10s). If changed in `yapit/gateway/__init__.py`, update `scripts/report.sh` too.
+**Note:** The visibility timeout values in the report prompt are a copy of the constants in `yapit/gateway/__init__.py` — when changing them, update `scripts/report.sh` in the same commit.
 
 ## Gotchas
 
