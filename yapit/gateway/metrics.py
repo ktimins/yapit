@@ -33,8 +33,11 @@ Query examples:
 """
 
 import asyncio
+import contextlib
 import json
+import time
 import traceback
+from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 
@@ -43,33 +46,51 @@ from loguru import logger
 
 # Global connection pool, initialized on startup
 _pool: asyncpg.Pool | None = None
+_database_url: str | None = None
 _write_queue: asyncio.Queue[dict[str, Any]] | None = None
 _writer_task: asyncio.Task[None] | None = None
 
+BATCH_INTERVAL_S = 5.0
+MAX_PENDING_EVENTS = 10_000  # buffer cap while the DB is unreachable; oldest dropped first
+RETRY_MIN_DELAY_S = 5.0
+RETRY_MAX_DELAY_S = 60.0
+DOWN_LOG_INTERVAL_S = 600.0
+
 
 async def init_metrics_db(database_url: str | None) -> None:
-    """Initialize metrics database connection pool. Call once on startup."""
-    global _pool
+    """Initialize metrics database connection pool. Call once on startup.
+
+    Failure is non-fatal: the writer loop keeps retrying, so a metrics DB that
+    is briefly unavailable during a deploy doesn't disable metrics for the
+    process lifetime.
+    """
+    global _pool, _database_url
+    _database_url = database_url
     if not database_url:
         return
     try:
-        _pool = await asyncpg.create_pool(
-            database_url,
-            min_size=1,
-            max_size=5,
-        )
+        _pool = await _create_pool()
     except Exception as e:
-        logger.warning(f"Metrics DB unavailable ({e}), continuing without metrics")
+        logger.error(f"Metrics DB unavailable at startup ({e}); writer will keep retrying")
         _pool = None
+
+
+async def _create_pool() -> asyncpg.Pool:
+    assert _database_url
+    pool = await asyncpg.create_pool(_database_url, min_size=1, max_size=5, timeout=10)
+    assert pool is not None
+    return pool
 
 
 async def start_metrics_writer() -> None:
     """Start background writer task. Call after init_metrics_db."""
     global _write_queue, _writer_task
-    if not _pool:
+    if not _database_url:
         return  # No metrics DB configured, skip writer
+    from yapit.gateway.supervision import supervised  # local import: supervision logs through this module
+
     _write_queue = asyncio.Queue()
-    _writer_task = asyncio.create_task(_writer_loop())
+    _writer_task = asyncio.create_task(supervised("metrics-writer", _writer_loop()))
 
 
 async def stop_metrics_writer() -> None:
@@ -102,34 +123,87 @@ async def stop_metrics_writer() -> None:
 
 
 async def _writer_loop() -> None:
-    """Background task that batches writes to TimescaleDB."""
-    batch: list[dict[str, Any]] = []
-    batch_interval = 5.0  # seconds
+    """Background task that batches writes to TimescaleDB.
+
+    Failures (connect or write) don't kill metrics: events buffer in a bounded
+    deque and each tick retries with backoff until the DB is reachable again.
+    """
+    global _pool
+    queue = _write_queue
+    assert queue is not None
+
+    pending: deque[dict[str, Any]] = deque(maxlen=MAX_PENDING_EVENTS)
+    dropped = 0
+    down_since: float | None = None
+    last_attempt = 0.0
+    last_down_log = 0.0
+    retry_delay = RETRY_MIN_DELAY_S
 
     while True:
         try:
             try:
-                event = await asyncio.wait_for(_write_queue.get(), timeout=batch_interval)  # ty: ignore[unresolved-attribute]  # fmt: skip
-                batch.append(event)
-                while not _write_queue.empty():  # ty: ignore[unresolved-attribute]
+                event = await asyncio.wait_for(queue.get(), timeout=BATCH_INTERVAL_S)
+                events = [event]
+                while not queue.empty():
                     try:
-                        batch.append(_write_queue.get_nowait())  # ty: ignore[unresolved-attribute]
+                        events.append(queue.get_nowait())
                     except asyncio.QueueEmpty:
                         break
+                for e in events:
+                    if len(pending) == MAX_PENDING_EVENTS:
+                        dropped += 1
+                    pending.append(e)
             except TimeoutError:
                 pass
 
-            if batch:
-                await _write_batch(batch)
-                batch = []
+            if not pending:
+                continue
+
+            now = time.monotonic()
+            if down_since is not None and now - last_attempt < retry_delay:
+                continue
+            last_attempt = now
+
+            try:
+                if _pool is None:
+                    _pool = await _create_pool()
+                await _write_batch(list(pending))
+            except Exception as e:
+                if down_since is None:
+                    down_since = now
+                    last_down_log = now
+                    logger.error(f"Metrics DB write failed ({e}); buffering events and retrying")
+                elif now - last_down_log >= DOWN_LOG_INTERVAL_S:
+                    last_down_log = now
+                    logger.error(
+                        f"Metrics DB still unavailable after {now - down_since:.0f}s ({e}); "
+                        f"{len(pending)} events buffered, {dropped} dropped"
+                    )
+                retry_delay = min(retry_delay * 2, RETRY_MAX_DELAY_S)
+                continue
+
+            if down_since is not None:
+                outage_s = round(now - down_since)
+                logger.info(
+                    f"Metrics DB recovered after {outage_s}s; "
+                    f"flushed {len(pending)} buffered events ({dropped} dropped)"
+                )
+                await log_warning(
+                    "Metrics DB outage recovered",
+                    outage_seconds=outage_s,
+                    events_flushed=len(pending),
+                    events_dropped=dropped,
+                )
+                down_since = None
+                dropped = 0
+            retry_delay = RETRY_MIN_DELAY_S
+            pending.clear()
 
         except asyncio.CancelledError:
-            if batch:
-                await _write_batch(batch)
+            if pending and _pool:
+                with contextlib.suppress(Exception):
+                    await _write_batch(list(pending))
             raise
-        except Exception:
-            traceback.print_exc()
-            batch = []
 
 
 async def _write_batch(events: list[dict[str, Any]]) -> None:
@@ -210,7 +284,7 @@ async def _write_batch(events: list[dict[str, Any]]) -> None:
             event.get("document_id"),
             event.get("request_id"),
             event.get("block_idx"),
-            json.dumps(data) if data else None,
+            json.dumps(data, default=str) if data else None,
         )
         rows.append(row)
 

@@ -9,6 +9,12 @@ Separate TimescaleDB instance for metrics (isolated from main Postgres).
 - **Schema**: `docker/metrics-init.sql`
 - **Code**: `yapit/gateway/metrics.py`
 
+### Writer self-healing (2026-08)
+
+The writer survives an unreachable metrics DB (startup or mid-life): events buffer in a bounded deque (10k, oldest dropped first) and every tick retries connect/write with backoff (5s→60s). ERROR logged on outage start + every 10 min while down; on recovery an INFO log plus a `warning` metrics event (`Metrics DB outage recovered`, with outage duration and drop count) land in the DB itself.
+
+Why this exists: Swarm deploys race the gateway (`update_config: start-first`) against metrics-db (`stop-first`, required — single Postgres volume). A gateway task can come up seconds before the metrics-db task's DNS name resolves. The pre-2026-08 writer gave up permanently on that first failure — a 5-day silent metrics blackout (2026-08-07 → 08-12). Swarm has no `depends_on`, so the race itself stays; the self-healing client is the fix. Deterministic staleness detection: `scripts/metrics_freshness.py` (run by `report.sh`, compares last metrics event vs last gateway log line).
+
 ## Event Types
 
 ### TTS
@@ -108,9 +114,9 @@ make sync-metrics     # just sync, no dashboard
 Automated analysis via `make report`:
 
 1. Syncs metrics (DuckDB) and logs from prod
-2. Runs Claude with read-only tools to analyze system health
-3. Reports to Discord (if `DISCORD_WEBHOOK_URL` set)
-4. Saves full report to `~/tmp/yapit-reports/`
+2. Runs the deterministic freshness check (`scripts/metrics_freshness.py`) — a STALE verdict is injected as the first context section so the agent leads with it
+3. Runs Claude with read-only tools to analyze system health
+4. Sends to ntfy (if `NTFY_TOPIC` set), saves full report to `~/tmp/yapit-reports/`
 
 ```bash
 make sync-logs        # rsync + decompress logs from prod

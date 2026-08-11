@@ -40,6 +40,10 @@ if [[ -z "${VPS_HOST:-}" ]]; then
     exit 1
 fi
 
+# Metrics pipeline freshness (deterministic staleness check on the just-synced data)
+echo "Checking metrics freshness..."
+METRICS_FRESHNESS=$(uv run --with duckdb python "$SCRIPT_DIR/metrics_freshness.py" 2>&1 || echo "(metrics_freshness.py failed — treat metrics freshness as UNKNOWN and investigate)")
+
 # Capture disk usage (full report + appends to history on VPS)
 echo "Gathering disk usage..."
 DISK_REPORT=$("$SCRIPT_DIR/disk-usage.sh" 2>&1 || echo "(disk-usage.sh failed)")
@@ -68,6 +72,10 @@ else
 fi
 
 EXTRA_CONTEXT="$BASE_CONTEXT
+
+## METRICS FRESHNESS (deterministic check — read this first)
+
+$METRICS_FRESHNESS
 
 ## DISK_USAGE (current snapshot)
 
@@ -167,7 +175,7 @@ Yapit is a text-to-speech platform with these components:
 - `error` — gateway-side failures caught by exception handlers (e.g., cache write failures, DB errors during result processing). These are NOT pipeline-specific errors — they indicate something broke inside the gateway itself. Check `data.message` for details.
 - `warning` — non-fatal issues worth tracking (e.g., near-failures, degraded behavior)
 - ANY `error` event is a red flag. These represent failures that may silently drop work — e.g., a synthesis result that completed but couldn't be cached, leaving the user with no audio.
-- **`Background task <name> crashed` / `Background task <name> exited unexpectedly`** — a long-lived loop (billing-consumer, result-consumer, cache-persister, tts-visibility, yolo-visibility, batch-poller, cache-lru-flush, cache-maintenance, usage-log-cleanup, guest-cleanup, billing-sync, openai-tts-dispatcher) is **gone** and is not coming back. Whatever that loop does has stopped silently for the rest of the process lifetime. **P0 — a gateway restart is required to recover.** Identify the loop from the name and report what has stopped (e.g. billing-consumer = nothing is being billed).
+- **`Background task <name> crashed` / `Background task <name> exited unexpectedly`** — a long-lived loop (billing-consumer, result-consumer, cache-persister, tts-visibility, yolo-visibility, batch-poller, cache-lru-flush, cache-maintenance, usage-log-cleanup, guest-cleanup, billing-sync, openai-tts-dispatcher, metrics-writer) is **gone** and is not coming back. Whatever that loop does has stopped silently for the rest of the process lifetime. **P0 — a gateway restart is required to recover.** Identify the loop from the name and report what has stopped (e.g. billing-consumer = nothing is being billed).
 - **`Billing consumer group missing (Redis reset?), re-creating`** (WARNING, `yapit.gateway.billing_consumer`) — Redis was recreated and the consumer group was rebuilt automatically. One occurrence per Redis restart is expected and self-healing; nothing to do. A *repeating* pattern means Redis is restarting in a loop — investigate that instead.
 - Since retries now back off exponentially (1s→60s), a stuck loop produces roughly 1 error/minute rather than 1/second. **Do not read a low error count as a minor problem** — check the time span between first and last occurrence, not just the count.
 
@@ -192,6 +200,15 @@ Yapit is a text-to-speech platform with these components:
   - `data.error` on failure (http_status or request_error)
 
 ## What to Analyze
+
+### Metrics freshness — CHECK FIRST
+The METRICS FRESHNESS section above is computed deterministically. If it reports STALE (🚨), that is the lead issue of the report (P0): the metrics pipeline is down, and the metrics DB only covers the period before the gap. Do NOT interpret the empty window as "no traffic" or "no errors" — analyze the blackout window from logs instead, and state explicitly which findings are metrics-based vs log-based.
+
+The metrics writer self-heals: it buffers events (bounded, 10k) and retries with backoff when the metrics DB is unreachable. Log lines to know (module `yapit.gateway.metrics`):
+- `Metrics DB unavailable at startup (...); writer will keep retrying` / `Metrics DB write failed (...); buffering events and retrying` (ERROR) — outage started
+- `Metrics DB still unavailable after Xs (...)` (ERROR, repeated ~every 10 min while down) — ongoing outage
+- `Metrics DB recovered after Xs; flushed N buffered events (M dropped)` (INFO) + a `warning` metrics event `Metrics DB outage recovered` — outage over; a resolved outage is worth a note (mention dropped events = permanent gap), not an issue
+An outage-start ERROR with no matching recovery = the pipeline is down right now.
 
 ### Errors — HIGHEST PRIORITY
 This is the most important section. Don't just count errors — read the actual error messages and investigate.
