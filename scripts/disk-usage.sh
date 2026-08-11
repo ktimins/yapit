@@ -65,12 +65,13 @@ done
 echo
 
 echo "=== Database Sizes ==="
-# Main postgres
-docker exec yapit-postgres-1 psql -U yapit_prod -d yapit_prod -t -c \
+# Swarm task names carry a task-id suffix (yapit_postgres.1.<id>), so resolve by name filter
+pg_cid=$(docker ps -qf name=yapit_postgres || true)
+docker exec "$pg_cid" psql -U yapit_prod -d yapit_prod -t -c \
     "SELECT pg_size_pretty(pg_database_size('yapit_prod'));" 2>/dev/null | xargs echo "Main DB (yapit_prod):" || echo "Main DB: (unavailable)"
 
-# Metrics timescaledb
-docker exec yapit-metrics-db-1 psql -U metrics -d metrics -t -c \
+metrics_cid=$(docker ps -qf name=yapit_metrics-db || true)
+docker exec "$metrics_cid" psql -U metrics -d metrics -t -c \
     "SELECT pg_size_pretty(pg_database_size('metrics'));" 2>/dev/null | xargs echo "Metrics DB:" || echo "Metrics DB: (unavailable)"
 echo
 
