@@ -5,6 +5,9 @@
 * Security: updated the browser used to render JavaScript-heavy pages — Playwright 1.59.1 → 1.62.1, which bundles Chromium 151 instead of 147. This browser loads untrusted pages, so it picks up four Chromium majors of security fixes.
 * Security: updated undici 7.28.0 → 7.29.0 (the HTTP client that fetches web pages) — Cache-Control parsing could disclose responses across users in shared caches, a blob-like request body could inject CRLF into headers, and the retry interceptor could desynchronize responses (GHSA-4cwx-7wf7-3272, GHSA-jr45-8vmc-qm54, GHSA-m8rv-5g2x-5cg5, GHSA-8xcm-r25x-g524, GHSA-v3r7-h72x-cjcm).
 * Updated defuddle 0.19.1 → 0.19.2 — Wikipedia articles no longer lose every section after the first image row, X/Twitter extraction works again after their DOM changes, and extracted content now rejects `data:`/`blob:` URLs and keeps the `sandbox` attribute on iframes.
+* Metrics recording now survives an unreachable metrics DB: events buffer and the writer retries with backoff instead of giving up permanently at startup. Only affects setups running the metrics profile.
+* Plan page states storage limits in MB (the backend enforces bytes, not a document count) and no longer advertises a Voice/Basic document split that does not exist.
+* Plan cards stack instead of squeezing into three columns until the viewport is wide enough for them, so feature lines stop wrapping several deep on tablets.
 
 ## v0.4.0 — 2026-08-02
 
