@@ -64,6 +64,10 @@ PROXY_REPORT=$(uv run "$SCRIPT_DIR/proxy_diagnostics.py" 2>&1 || echo "(proxy_di
 echo "Running billing reconciliation..."
 BILLING_RECON=$(uv run "$SCRIPT_DIR/billing_reconciliation.py" --days 14 2>&1 || echo "(billing_reconciliation.py failed)")
 
+# Recent commits + deploys, so incidents can be checked against the fix that landed after them
+GIT_LOG=$(git log -30 --date=format-local:'%Y-%m-%d %H:%M' --format='%ad  %h  %s')
+DEPLOY_LOG=$(tail -10 "$PROJECT_DIR/.deploys.log" 2>/dev/null || echo "(no deploy log)")
+
 # Build context
 if $AFTER_DEPLOY; then
     BASE_CONTEXT="CONTEXT: You were triggered shortly after a deploy. Focus on: Are there new errors since the deploy? Any anomalies compared to before?"
@@ -95,7 +99,15 @@ $PROXY_REPORT
 
 ## BILLING RECONCILIATION (synthesis events vs billing events, pre-computed)
 
-$BILLING_RECON"
+$BILLING_RECON
+
+## RECENT COMMITS (last 30, newest first, local time)
+
+$GIT_LOG
+
+## DEPLOYS (last 10, local time — when a commit reached prod; FAILED = deploy aborted, code did not ship)
+
+$DEPLOY_LOG"
 
 # The analysis prompt
 read -r -d '' PROMPT << 'EOF' || true
@@ -200,6 +212,14 @@ Yapit is a text-to-speech platform with these components:
   - `data.error` on failure (http_status or request_error)
 
 ## What to Analyze
+
+### Resolution check (run this on every incident before writing it up)
+
+The report describes the system as of the sync time, not the worst moment inside the window. So for each incident: find its last occurrence, then look in RECENT COMMITS for a commit addressing it and in DEPLOYS for a deploy at or after that commit.
+
+An incident whose last occurrence precedes that deploy is **resolved**. Report it as one line under Patterns — what broke, how long it lasted, which commit fixed it, and any permanent consequence (dropped events, lost billing rows) — and leave it out of Issues and out of the status line. A fix that is committed but not yet in DEPLOYS is still live in prod: report it as an issue and say the fix is awaiting deploy.
+
+The long-running failures are the ones this catches: multi-day metrics-DB gaps, dead background loops, DLQ backlogs. A gap that ended before a fix shipped is history; what decides the verdict is whether the failure is still occurring at the end of the window.
 
 ### Metrics freshness
 A STALE verdict in the METRICS FRESHNESS section is the lead issue of the report (P0): the metrics pipeline is down, and the metrics DB only covers the period before the gap — the window after it is unobserved, not quiet. Analyze that window from logs, and label each finding metrics-based or log-based.
