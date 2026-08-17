@@ -79,6 +79,16 @@ npm package in `docker/defuddle/`. Dockerfile uses `npm ci`, so the lockfile mus
    - Playwright path: `new Defuddle(document, { url, markdown: true }).parseAsync()` (browser bundle injected via `addInitScript`, returns `{ content, title }`)
 4. `make dev-cpu` to rebuild, test website extraction
 
+Playwright pins the Chromium build that ships in the production image (`npx playwright install`), so its version *is* our browser-security posture — bump it whenever Chromium majors move, not just when a Playwright feature is wanted. `browsers.json` in the Playwright tag says which Chromium a release carries:
+
+```
+curl -s https://raw.githubusercontent.com/microsoft/playwright/v<tag>/packages/playwright-core/browsers.json | jq -r '.browsers[] | select(.name=="chromium") | .browserVersion'
+```
+
+`npm install --package-lock-only` only re-resolves deps whose lockfile entry falls outside the declared range — a caret dep sitting at a now-vulnerable version stays put. Raise the floor in `package.json` (or `npm update <pkg>`) and re-run `npm audit` to confirm.
+
+Verify all four extraction paths against the running container, not just one: static, static-bot (`github.com`), Playwright (a JS-rendered page — a Blogspot post works), and `html-direct` (POST `html` instead of `url`).
+
 ## Adding New Dependencies
 
 When adding new packages, verify license compatibility with AGPL-3.0. See [[licensing]] for verification commands and compatible licenses.

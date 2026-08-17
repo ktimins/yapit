@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+* Security: updated the browser used to render JavaScript-heavy pages — Playwright 1.59.1 → 1.62.1, which bundles Chromium 151 instead of 147. This browser loads untrusted pages, so it picks up four Chromium majors of security fixes.
+* Security: updated undici 7.28.0 → 7.29.0 (the HTTP client that fetches web pages) — Cache-Control parsing could disclose responses across users in shared caches, a blob-like request body could inject CRLF into headers, and the retry interceptor could desynchronize responses (GHSA-4cwx-7wf7-3272, GHSA-jr45-8vmc-qm54, GHSA-m8rv-5g2x-5cg5, GHSA-8xcm-r25x-g524, GHSA-v3r7-h72x-cjcm).
+* Updated defuddle 0.19.1 → 0.19.2 — Wikipedia articles no longer lose every section after the first image row, X/Twitter extraction works again after their DOM changes, and extracted content now rejects `data:`/`blob:` URLs and keeps the `sandbox` attribute on iframes.
+
 ## v0.4.0 — 2026-08-02
 
 * Fixed non-English Kokoro voices reading text with English pronunciation — each language now uses its own G2P pipeline; Japanese and Chinese (previously silent or spelling out "japanese letter"/"chinese letter") now work. #87
