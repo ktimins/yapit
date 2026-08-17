@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.1 — 2026-08-18
 
 * Security: updated the browser used to render JavaScript-heavy pages — Playwright 1.59.1 → 1.62.1, which bundles Chromium 151 instead of 147. This browser loads untrusted pages, so it picks up four Chromium majors of security fixes.
 * Security: updated undici 7.28.0 → 7.29.0 (the HTTP client that fetches web pages) — Cache-Control parsing could disclose responses across users in shared caches, a blob-like request body could inject CRLF into headers, and the retry interceptor could desynchronize responses (GHSA-4cwx-7wf7-3272, GHSA-jr45-8vmc-qm54, GHSA-m8rv-5g2x-5cg5, GHSA-8xcm-r25x-g524, GHSA-v3r7-h72x-cjcm).
