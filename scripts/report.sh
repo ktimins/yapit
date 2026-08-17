@@ -213,13 +213,13 @@ Yapit is a text-to-speech platform with these components:
 
 ## What to Analyze
 
-### Resolution check (run this on every incident before writing it up)
+### Fix check (before writing up any incident)
 
-The report describes the system as of the sync time, not the worst moment inside the window. So for each incident: find its last occurrence, then look in RECENT COMMITS for a commit addressing it and in DEPLOYS for a deploy at or after that commit.
+Match every incident against RECENT COMMITS first. An incident that an already-deployed commit fixes is not news — drop it from the report entirely: no issue, no pattern, no line in the summary, no bearing on the status line.
 
-An incident whose last occurrence precedes that deploy is **resolved**. Report it as one line under Patterns — what broke, how long it lasted, which commit fixed it, and any permanent consequence (dropped events, lost billing rows) — and leave it out of Issues and out of the status line. A fix that is committed but not yet in DEPLOYS is still live in prod: report it as an issue and say the fix is awaiting deploy.
+Judge the match on substance rather than on a plausible-looking subject line. `git show <sha>` gives the full message and diff, and the checked-out tree is the code that fix landed in — read both until you can name the failing path the commit changed. Two things break a match, and both are worth reporting: the commit is not in DEPLOYS yet (the bug is still live in prod — report it and say the fix is awaiting deploy), or the failure recurs after that deploy (the fix did not take — report that it did not).
 
-The long-running failures are the ones this catches: multi-day metrics-DB gaps, dead background loops, DLQ backlogs. A gap that ended before a fix shipped is history; what decides the verdict is whether the failure is still occurring at the end of the window.
+Recovery is not a fix. An outage that ended, a background loop that came back after a restart, a queue that drained — with no commit behind it, nobody has addressed the cause, and it stays in the report as an issue.
 
 ### Metrics freshness
 A STALE verdict in the METRICS FRESHNESS section is the lead issue of the report (P0): the metrics pipeline is down, and the metrics DB only covers the period before the gap — the window after it is unobserved, not quiet. Analyze that window from logs, and label each finding metrics-based or log-based.
@@ -227,7 +227,7 @@ A STALE verdict in the METRICS FRESHNESS section is the lead issue of the report
 The metrics writer self-heals: it buffers events (bounded, 10k) and retries with backoff when the metrics DB is unreachable. Log lines to know (module `yapit.gateway.metrics`):
 - `Metrics DB unavailable at startup (...); writer will keep retrying` / `Metrics DB write failed (...); buffering events and retrying` (ERROR) — outage started
 - `Metrics DB still unavailable after Xs (...)` (ERROR, repeated ~every 10 min while down) — ongoing outage
-- `Metrics DB recovered after Xs; flushed N buffered events (M dropped)` (INFO) + a `warning` metrics event `Metrics DB outage recovered` — outage over; a resolved outage is worth a note (mention dropped events = permanent gap), not an issue
+- `Metrics DB recovered after Xs; flushed N buffered events (M dropped)` (INFO) + a `warning` metrics event `Metrics DB outage recovered` — outage over; run the Fix check on it, and where it stays in the report, state the dropped events as a permanent gap
 An outage-start ERROR with no matching recovery = the pipeline is down right now.
 
 ### Errors — HIGHEST PRIORITY
@@ -400,7 +400,7 @@ Be concise but complete. This is a diagnostic report.
 
 ## Limitations
 
-You have access to **synced static data only** (metrics DB + logs up to sync time).
+You have access to **synced static data** (metrics DB + logs up to sync time) and **the repository** at the current checkout — source and full git history, for the Fix check and for reading the code behind any failure.
 You do NOT have:
 - Live Redis access (no current queue depths)
 - Live worker status (only historical metrics)
