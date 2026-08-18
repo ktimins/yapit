@@ -5,8 +5,34 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-REPORT_DIR="$HOME/tmp/yapit-reports"
+REPORT_DIR="$HOME/logs/yapit-reports"
 mkdir -p "$REPORT_DIR"
+
+UNIT=yapit-dep-scout
+
+# What this run did, for anyone reading later: run-log keeps one line per run in
+# ~/logs/runs/$UNIT.jsonl. Nothing here notifies — a dependency report is read
+# when there is time for it, from the yapit dashboard — so that line and the
+# overdue watchdog behind it are the only things saying this still runs.
+log_run() {  # outcome [reason] [stats-json]
+    local stats="${3:-}"
+    [[ -n "$stats" ]] || stats='{}'
+    if ! command -v run-log >/dev/null 2>&1; then
+        echo "run-log is not on PATH — this run goes unrecorded, and the watchdog will call $UNIT overdue" >&2
+        return 0
+    fi
+    run-log "$UNIT" "$1" --reason "${2:-}" --stats "$stats" \
+        || echo "run-log failed — this run goes unrecorded" >&2
+    return 0
+}
+
+fail_reason=""
+finish() {
+    local rc=$?
+    [[ "$rc" -eq 0 ]] && return 0
+    log_run fail "${fail_reason:-dep-scout.sh exited $rc before finishing — journalctl --user -u $UNIT}"
+}
+trap finish EXIT
 
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a
@@ -152,6 +178,7 @@ output=$(clankr run "$PROJECT_DIR" -p "$SCRIPT_DIR/dep-scout-profile" \
     echo "Claude analysis failed. stderr:"
     cat "$REPORT_DIR/dep-scout-stderr.log"
     echo "stdout: $output"
+    fail_reason="the analysis agent failed — $(tail -c 200 "$REPORT_DIR/dep-scout-stderr.log" | tr '\n' ' ')"
     exit 1
 }
 
@@ -171,28 +198,5 @@ echo "Report saved to: $REPORT_FILE"
 echo ""
 echo "$message"
 
-# Send to ntfy
-if [[ -n "${NTFY_TOPIC:-}" ]]; then
-    echo ""
-    echo "Sending to ntfy..."
-
-    if [[ ${#message} -gt 3800 ]]; then
-        ntfy_message="${message:0:3700}
-
-... (truncated, full: $REPORT_FILE)"
-    else
-        ntfy_message="$message"
-    fi
-
-    printf '%s' "$ntfy_message" | curl -s \
-        -H "Title: Yapit dependency report" \
-        -H "Priority: low" \
-        -H "Tags: dependencies" \
-        -d @- \
-        "https://ntfy.sh/${NTFY_TOPIC}" || {
-        echo "ntfy notification failed (continuing anyway)"
-    }
-    echo "Sent to ntfy."
-else
-    echo "(NTFY_TOPIC not set, skipping ntfy)"
-fi
+log_run ok "" "$(jq -n --arg report "$REPORT_FILE" --arg session "$session_id" \
+    '{report: $report, session: $session}')"

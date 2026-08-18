@@ -5,30 +5,77 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# Output directory for full reports
-REPORT_DIR="$HOME/tmp/yapit-reports"
+# Every report ever written, kept out of ~/tmp because that gets cleaned: the
+# laptop's yapit dashboard lists months of these.
+REPORT_DIR="$HOME/logs/yapit-reports"
 mkdir -p "$REPORT_DIR"
+
+UNIT=yapit-health-report
+
+# Which verdict the report opened with — the one thing that decides whether this
+# notifies. The prompt asks for the status line first, but an agent sometimes
+# writes a sentence in front of it, so the first line carrying any of the three
+# markers decides, and a line carrying two of them reads as the louder one.
+classify() {  # report text on stdin -> issues|anomalies|nominal|unknown
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            *⚠*) echo issues;    return ;;
+            *🔍*) echo anomalies; return ;;
+            *✅*) echo nominal;   return ;;
+        esac
+    done < <(head -20)
+    echo unknown
+}
+
+# What the report did, for anyone reading later: run-log keeps one line per run
+# in ~/logs/runs/$UNIT.jsonl. The overdue watchdog reads it to tell "ran, nothing
+# to report" from "has not run in days", and the yapit dashboard lists it.
+log_run() {  # outcome [reason] [stats-json]
+    local stats="${3:-}"
+    [[ -n "$stats" ]] || stats='{}'
+    if ! command -v run-log >/dev/null 2>&1; then
+        echo "run-log is not on PATH — this run goes unrecorded, and the watchdog will call $UNIT overdue" >&2
+        return 0
+    fi
+    run-log "$UNIT" "$1" --reason "${2:-}" --stats "$stats" \
+        || echo "run-log failed — this run goes unrecorded" >&2
+    return 0
+}
 
 # Parse flags
 AFTER_DEPLOY=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --after-deploy) AFTER_DEPLOY=true; shift ;;
+        --classify) classify; exit 0 ;;
         -h|--help)
             echo "Usage: $0 [--after-deploy]"
             echo "  --after-deploy  Add context about recent deploy"
+            echo "  --classify      Read a report on stdin, print the verdict that decides whether it notifies"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
+# A run that dies anywhere below says so in the run log, so a report that stopped
+# happening is visible as itself rather than as a gap.
+fail_reason=""
+finish() {
+    local rc=$?
+    [[ "$rc" -eq 0 ]] && return 0
+    log_run fail "${fail_reason:-report.sh exited $rc before finishing — journalctl --user -u $UNIT}"
+}
+trap finish EXIT
+
 # Sync data from prod
 echo "Syncing data from prod..."
 make sync-data
 
-# Load env vars from .env (VPS_HOST, NTFY_TOPIC, CLOUDFLARE_API_TOKEN, etc.)
-# Only sets vars not already in environment.
+# Load env vars from .env (VPS_HOST, NTFY_TOPIC, CLOUDFLARE_API_TOKEN, etc.).
+# These win over anything already exported, so pointing a test run somewhere
+# harmless means overriding NTFY_BASE_URL, which .env does not set.
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a
     source "$PROJECT_DIR/.env"
@@ -442,18 +489,11 @@ for attempt in 1 2 3; do
 done
 
 if [[ -z "$output" ]]; then
-    # Notify on give-up — an unreported failure is indistinguishable from a healthy day.
+    # A night the report could not run is recorded, not notified: one bad night
+    # says nothing, and a run of them is what the overdue watchdog is for.
     echo "Claude analysis failed after 3 attempts. stderr:"
     cat "$REPORT_DIR/claude-stderr.log"
-    if [[ -n "${NTFY_TOPIC:-}" ]]; then
-        printf 'Health report could not run — system state is UNKNOWN.\n\n%s' \
-            "$(tail -c 500 "$REPORT_DIR/claude-stderr.log")" | curl -s \
-            -H "Title: ❌ Yapit health report FAILED" \
-            -H "Priority: high" \
-            -H "Tags: health" \
-            -d @- \
-            "https://ntfy.sh/${NTFY_TOPIC}" > /dev/null || true
-    fi
+    fail_reason="the analysis agent failed three times — $(tail -c 200 "$REPORT_DIR/claude-stderr.log" | tr '\n' ' ')"
     exit 1
 fi
 
@@ -483,22 +523,29 @@ echo "Report saved to: $REPORT_FILE"
 echo ""
 echo "$message"
 
-# Send to ntfy if topic configured
-if [[ -n "${NTFY_TOPIC:-}" ]]; then
-    echo ""
-    echo "Sending to ntfy..."
+status=$(printf '%s' "$result" | classify)
+log_run ok "" "$(jq -n --arg status "$status" --arg report "$REPORT_FILE" --arg session "$session_id" \
+    '{status: $status, report: $report, session: $session}')"
 
-    # Determine status from message content
-    if echo "$result" | head -1 | grep -q "✅"; then
-        PRIORITY="default"
-        TITLE="✅ Yapit health: nominal"
-    elif echo "$result" | head -1 | grep -q "⚠️"; then
-        PRIORITY="high"
-        TITLE="⚠️ Yapit health: issues detected"
-    else
-        PRIORITY="default"
-        TITLE="🔍 Yapit health report"
-    fi
+# Only a report that found issues is worth a notification. A green day and an
+# anomaly note are read from the dashboard, on the reader's schedule. A report
+# whose status line cannot be found still pings: unreadable is not the same as
+# fine, and it may be an "issues detected" this could not see.
+case "$status" in
+    issues)  TITLE="⚠️ Yapit health: issues detected"; PRIORITY="high" ;;
+    unknown) TITLE="🔍 Yapit health: could not tell how it went"; PRIORITY="default" ;;
+    *)       TITLE="" ;;
+esac
+
+if [[ -z "$TITLE" ]]; then
+    echo ""
+    echo "Status: $status — recorded, no notification sent."
+elif [[ -z "${NTFY_TOPIC:-}" ]]; then
+    echo ""
+    echo "Status: $status — NTFY_TOPIC not set, so nothing was notified."
+else
+    echo ""
+    echo "Status: $status — sending to ntfy..."
 
     # ntfy has ~4KB limit for message body
     if [[ ${#message} -gt 3800 ]]; then
@@ -514,10 +561,8 @@ if [[ -n "${NTFY_TOPIC:-}" ]]; then
         -H "Priority: $PRIORITY" \
         -H "Tags: health" \
         -d @- \
-        "https://ntfy.sh/${NTFY_TOPIC}" || {
+        "${NTFY_BASE_URL:-https://ntfy.sh}/${NTFY_TOPIC}" || {
         echo "ntfy notification failed (continuing anyway)"
     }
     echo "Sent to ntfy."
-else
-    echo "(NTFY_TOPIC not set, skipping ntfy)"
 fi
