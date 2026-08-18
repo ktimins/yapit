@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+* Self-host on arm64 now actually gets the jemalloc allocator in the TTS and figure-detection workers — `LD_PRELOAD` pinned an x86-only library path, so arm machines silently fell back to glibc malloc (worse memory behavior on long-running workers).
+* New `make self-host-smoke` — read-only health check of a running self-host stack: gateway, frontend proxy, and both workers. CI now boots the full self-host stack on an arm64 runner on every change, so Apple Silicon breakage is caught before it ships.
+
 ## v0.4.2 — 2026-08-18
 
 * Fixed fresh self-host installs failing at gateway startup — database seeding collided with plan rows the migrations had already inserted, so a freshly migrated (empty) database hit a unique-constraint violation and the gateway never came up. Seeding now inserts only the missing plan tiers. #94
