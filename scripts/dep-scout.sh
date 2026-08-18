@@ -10,10 +10,57 @@ mkdir -p "$REPORT_DIR"
 
 UNIT=yapit-dep-scout
 
+# How far into a report the status line may sit. The scout is asked for it on the
+# first line; the saved file puts a session header in front of that, and an agent
+# sometimes puts a sentence there too.
+HEAD_LINES=20
+
+# The line the report opens with, where it says whether it found something needing
+# a person. `scripts/dep-scout-profile/CLAUDE.md` defines it and is the only place
+# that does. Reads all of its input after finding it, so that whatever is writing
+# to this never takes a SIGPIPE mid-report — a report long enough to fill a pipe
+# would otherwise kill the run between saving itself and notifying.
+status_line() {  # report text on stdin -> that line, empty if it has none
+    local line found="" n=0
+    # `|| [[ -n "$line" ]]` so a report whose last line has no newline after it —
+    # which is how the agent's result arrives — is still read.
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        n=$((n + 1))
+        if [[ -z "$found" && "$n" -le "$HEAD_LINES" ]]; then
+            case "$line" in
+                *⚠*|*✅*) found="$line" ;;
+            esac
+        fi
+    done
+    printf '%s' "$found"
+}
+
+classify() {  # report text on stdin -> actionable|routine|unknown
+    case "$(status_line)" in
+        *⚠*) echo actionable ;;
+        *✅*) echo routine ;;
+        *)   echo unknown ;;
+    esac
+}
+
+# The status line as a notification title: what was found, without the markers and
+# the label in front of it.
+headline() {  # status line -> the clause naming the finding, empty if there is none
+    local text
+    text=$(printf '%s' "$1" | sed -e 's/⚠️//g' -e 's/⚠//g' -e 's/✅//g' -e 's/[*`#]//g' \
+        -e 's/^[[:space:]]*//' -e 's/^Action required//' -e 's/^Nothing to act on//' \
+        -e 's/^[[:space:]—-]*//' -e 's/[[:space:]]*$//')
+    if [[ "${#text}" -gt 110 ]]; then
+        text="${text:0:110}"
+        text="${text% *}…"
+    fi
+    printf '%s' "$text"
+}
+
 # What this run did, for anyone reading later: run-log keeps one line per run in
-# ~/logs/runs/$UNIT.jsonl. This script notifies nobody — its report is read from
-# the yapit dashboard, on whatever day there is time for it — so that line and
-# the overdue watchdog behind it are the only things saying it still runs.
+# ~/logs/runs/$UNIT.jsonl. Most runs notify nobody — a report with nothing to act
+# on is read from the yapit dashboard, on whatever day there is time for it — so
+# that line and the overdue watchdog behind it are what say the scout still runs.
 log_run() {  # outcome [reason] [stats-json]
     local stats="${3:-}"
     [[ -n "$stats" ]] || stats='{}'
@@ -26,6 +73,18 @@ log_run() {  # outcome [reason] [stats-json]
     return 0
 }
 
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --classify) classify; exit 0 ;;
+        -h|--help)
+            echo "Usage: $0 [--classify]"
+            echo "  --classify  Read a report on stdin, print the verdict that decides whether it notifies"
+            exit 0
+            ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
 fail_reason=""
 finish() {
     local rc=$?
@@ -34,6 +93,8 @@ finish() {
 }
 trap finish EXIT
 
+# These win over anything already exported: an NTFY_TOPIC from the environment is
+# overwritten here, while NTFY_BASE_URL, which .env does not set, is not.
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a
     source "$PROJECT_DIR/.env"
@@ -198,5 +259,48 @@ echo "Report saved to: $REPORT_FILE"
 echo ""
 echo "$message"
 
-log_run ok "" "$(jq -n --arg report "$REPORT_FILE" --arg session "$session_id" \
-    '{report: $report, session: $session}')"
+line=$(printf '%s' "$result" | status_line)
+status=$(printf '%s' "$line" | classify)
+log_run ok "" "$(jq -n --arg status "$status" --arg report "$REPORT_FILE" --arg session "$session_id" \
+    '{status: $status, report: $report, session: $session}')"
+
+# A scout report that found something to patch or migrate is worth interrupting
+# someone for; one that found only hygiene is read from the dashboard, on the
+# reader's schedule. A report whose status line cannot be found still pings:
+# unreadable is not the same as nothing to do.
+naming=$(headline "$line")
+case "$status" in
+    actionable) TITLE="⚠️ Yapit deps: ${naming:-action required}"; PRIORITY="default" ;;
+    unknown)    TITLE="🔍 Yapit deps: could not tell whether it found anything"; PRIORITY="default" ;;
+    *)          TITLE="" ;;
+esac
+
+if [[ -z "$TITLE" ]]; then
+    echo ""
+    echo "Status: $status — recorded, no notification sent."
+elif [[ -z "${NTFY_TOPIC:-}" ]]; then
+    echo ""
+    echo "Status: $status — NTFY_TOPIC not set, so nothing was notified."
+else
+    echo ""
+    echo "Status: $status — sending to ntfy..."
+
+    # ntfy has ~4KB limit for message body
+    if [[ ${#message} -gt 3800 ]]; then
+        ntfy_message="${message:0:3700}
+
+... (truncated, full: $REPORT_FILE)"
+    else
+        ntfy_message="$message"
+    fi
+
+    printf '%s' "$ntfy_message" | curl -s \
+        -H "Title: $TITLE" \
+        -H "Priority: $PRIORITY" \
+        -H "Tags: package" \
+        --data-binary @- \
+        "${NTFY_BASE_URL:-https://ntfy.sh}/${NTFY_TOPIC}" || {
+        echo "ntfy notification failed (continuing anyway)"
+    }
+    echo "Sent to ntfy."
+fi
