@@ -566,7 +566,7 @@ else
         -H "Title: $TITLE" \
         -H "Priority: $PRIORITY" \
         -H "Tags: health" \
-        -d @- \
+        --data-binary @- \
         "${NTFY_BASE_URL:-https://ntfy.sh}/${NTFY_TOPIC}" || {
         echo "ntfy notification failed (continuing anyway)"
     }
