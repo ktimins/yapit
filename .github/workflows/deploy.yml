@@ -138,6 +138,21 @@ jobs:
       - run: npm ci --prefix frontend
       - run: npm test --prefix frontend
 
+  # Boots the self-host stack from .env.selfhost.example on an arm64 runner — the config
+  # path no other job runs (alembic migrations + seed on a fresh DB, selfhost compose
+  # overlay, nginx.selfhost.conf) and arm-only image build failures (cf. #94). Runs no
+  # test suites, and deliberately doesn't gate the image builds: self-hosters build from
+  # source, so selfhost breakage shouldn't block prod images.
+  test-selfhost:
+    if: ${{ inputs.skip_tests != true && !contains(github.event.head_commit.message, '[skip tests]') }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - run: cp .env.selfhost.example .env.selfhost
+      - run: make self-host-ci
+      - run: make self-host-logs
+        if: failure()
+
   # === Build and Push Images (only what changed) ===
   build-frontend:
     needs: [changes, lint, test-unit, test-integration, test-frontend]

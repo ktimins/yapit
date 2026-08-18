@@ -31,6 +31,21 @@ self-host:
 self-host-auth:
 	VITE_ENV_FILE=.env.selfhost.auth COMPOSE_PROFILES=auth $(SELFHOST_COMPOSE) up -d --build
 
+# Boot from scratch and verify: healthchecks, a gateway restart (seeding must be
+# idempotent against the already-seeded DB), then the smoke checks.
+self-host-ci:
+	$(SELFHOST_COMPOSE) up -d --build --wait --wait-timeout 900
+	$(SELFHOST_COMPOSE) restart gateway
+	timeout 120 bash -c 'until curl -fsS http://localhost:8000/health; do sleep 2; done'
+	$(MAKE) self-host-smoke
+
+self-host-smoke:
+	SELFHOST_COMPOSE="$(SELFHOST_COMPOSE)" scripts/selfhost-smoke.sh
+
+self-host-logs:
+	$(SELFHOST_COMPOSE) ps -a
+	$(SELFHOST_COMPOSE) logs
+
 self-host-down:
 	$(SELFHOST_COMPOSE) --profile auth --profile metrics down
 
