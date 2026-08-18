@@ -75,7 +75,7 @@ def test_classify_survives_a_report_too_long_for_a_pipe() -> None:
 
 
 @pytest.mark.skipif(not SAVED_REPORTS, reason="no saved scout reports on this machine")
-@pytest.mark.parametrize("path", SAVED_REPORTS, ids=lambda p: p.stem)
+@pytest.mark.parametrize("path", SAVED_REPORTS, ids=[p.stem for p in SAVED_REPORTS])
 def test_saved_reports_are_never_read_as_silence(path: Path) -> None:
     """Every report the scout has ever written, against the one rule that matters:
     silence needs the report's own check mark. Reports predating the status line
