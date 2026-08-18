@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.2 — 2026-08-18
+
+* Fixed fresh self-host installs failing at gateway startup — database seeding collided with plan rows the migrations had already inserted, so a freshly migrated (empty) database hit a unique-constraint violation and the gateway never came up. Seeding now inserts only the missing plan tiers. #94
+* Fixed `make self-host` on Apple Silicon / arm64 — the kokoro worker image failed to build (a dependency ships no arm64 wheel and the image lacked a C++ compiler to build it) and the gateway image downloaded an amd64-only pandoc package. #94
+
 ## v0.4.1 — 2026-08-18
 
 * Security: updated the browser used to render JavaScript-heavy pages — Playwright 1.59.1 → 1.62.1, which bundles Chromium 151 instead of 147. This browser loads untrusted pages, so it picks up four Chromium majors of security fixes.
