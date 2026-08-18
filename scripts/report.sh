@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# Every report ever written, kept out of ~/tmp because that gets cleaned: the
-# laptop's yapit dashboard lists months of these.
+# Every report ever written. Under ~/logs, which is backed up and never swept:
+# the laptop's yapit dashboard lists months of these.
 REPORT_DIR="$HOME/logs/yapit-reports"
 mkdir -p "$REPORT_DIR"
 
@@ -16,16 +16,22 @@ UNIT=yapit-health-report
 # notifies. The prompt asks for the status line first, but an agent sometimes
 # writes a sentence in front of it, so the first line carrying any of the three
 # markers decides, and a line carrying two of them reads as the louder one.
+# Reads all of its input even after it has decided, so that whatever is writing
+# to it never takes a SIGPIPE mid-report — a report long enough to fill a pipe
+# would otherwise kill this script between saving itself and notifying.
 classify() {  # report text on stdin -> issues|anomalies|nominal|unknown
-    local line
+    local line verdict="" n=0
     while IFS= read -r line; do
-        case "$line" in
-            *⚠*) echo issues;    return ;;
-            *🔍*) echo anomalies; return ;;
-            *✅*) echo nominal;   return ;;
-        esac
-    done < <(head -20)
-    echo unknown
+        n=$((n + 1))
+        if [[ -z "$verdict" && "$n" -le 20 ]]; then
+            case "$line" in
+                *⚠*) verdict=issues ;;
+                *🔍*) verdict=anomalies ;;
+                *✅*) verdict=nominal ;;
+            esac
+        fi
+    done
+    echo "${verdict:-unknown}"
 }
 
 # What the report did, for anyone reading later: run-log keeps one line per run
@@ -50,7 +56,7 @@ while [[ $# -gt 0 ]]; do
         --after-deploy) AFTER_DEPLOY=true; shift ;;
         --classify) classify; exit 0 ;;
         -h|--help)
-            echo "Usage: $0 [--after-deploy]"
+            echo "Usage: $0 [--after-deploy | --classify]"
             echo "  --after-deploy  Add context about recent deploy"
             echo "  --classify      Read a report on stdin, print the verdict that decides whether it notifies"
             exit 0
@@ -74,8 +80,8 @@ echo "Syncing data from prod..."
 make sync-data
 
 # Load env vars from .env (VPS_HOST, NTFY_TOPIC, CLOUDFLARE_API_TOKEN, etc.).
-# These win over anything already exported, so pointing a test run somewhere
-# harmless means overriding NTFY_BASE_URL, which .env does not set.
+# These win over anything already exported: an NTFY_TOPIC from the environment
+# is overwritten here, while NTFY_BASE_URL, which .env does not set, is not.
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a
     source "$PROJECT_DIR/.env"

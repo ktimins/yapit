@@ -47,6 +47,16 @@ def test_classify(verdict: str, report: str) -> None:
     assert classify(report) == verdict
 
 
+def test_classify_survives_a_report_too_long_for_a_pipe() -> None:
+    """A verdict is read out of the opening lines, but the whole report still has
+    to go in: a report bigger than a pipe buffer used to kill the classifier —
+    and with it the run that had just saved the report and not yet notified.
+    """
+    report = "⚠️ **Issues detected**\n\n## Summary\n\nThe queue backed up.\n" + "- a log line\n" * 40000
+    assert len(report) > 400_000
+    assert classify(report) == "issues"
+
+
 def test_classify_reads_bare_warning_sign() -> None:
     """The warning sign arrives both with and without its emoji variation
     selector, and both mean the same thing.

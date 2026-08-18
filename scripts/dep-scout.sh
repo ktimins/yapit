@@ -11,9 +11,9 @@ mkdir -p "$REPORT_DIR"
 UNIT=yapit-dep-scout
 
 # What this run did, for anyone reading later: run-log keeps one line per run in
-# ~/logs/runs/$UNIT.jsonl. Nothing here notifies — a dependency report is read
-# when there is time for it, from the yapit dashboard — so that line and the
-# overdue watchdog behind it are the only things saying this still runs.
+# ~/logs/runs/$UNIT.jsonl. This script notifies nobody — its report is read from
+# the yapit dashboard, on whatever day there is time for it — so that line and
+# the overdue watchdog behind it are the only things saying it still runs.
 log_run() {  # outcome [reason] [stats-json]
     local stats="${3:-}"
     [[ -n "$stats" ]] || stats='{}'

@@ -140,7 +140,7 @@ When **adding or removing** config files or Settings fields, check ALL of these:
 - `proxy_diagnostics.py` — Stack Auth + Traefik diagnostics from VPS container logs (latency, errors, slow requests)
 
 **Dependencies:**
-- `dep-scout.sh` — Biweekly agent-driven dependency report (checks versions, changelogs, relevance). Notifies nobody; saved to `~/logs/yapit-reports/`.
+- `dep-scout.sh` — Agent-driven dependency report on a timer (checks versions, changelogs, relevance). Notifies nobody; saved to `~/logs/yapit-reports/`.
 
 **Stress testing:**
 - `stress_test.py` — TTS stress testing
