@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.3 — 2026-08-18
 
 * Self-host on arm64 now actually gets the jemalloc allocator in the TTS and figure-detection workers — `LD_PRELOAD` pinned an x86-only library path, so arm machines silently fell back to glibc malloc (worse memory behavior on long-running workers).
 * New `make self-host-smoke` — read-only health check of a running self-host stack: gateway, frontend proxy, and both workers. CI now boots the full self-host stack on an arm64 runner on every change, so Apple Silicon breakage is caught before it ships.
