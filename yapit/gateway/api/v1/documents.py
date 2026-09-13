@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Res
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import BaseModel, Field, HttpUrl, StringConstraints, UrlConstraints, ValidationError
-from sqlmodel import col, func, select
+from sqlmodel import col, func, select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from yapit.contracts import (
@@ -1572,15 +1572,25 @@ class PositionUpdate(BaseModel):
 
 @router.patch("/{document_id}/position")
 async def update_position(
-    document: CurrentDoc,
+    document_id: UUID,
     body: PositionUpdate,
     db: DbSession,
+    user: AuthenticatedUser,
 ) -> dict:
-    """Update playback position for cross-device sync."""
-    document.last_block_idx = body.block_idx
+    """Update playback position for cross-device sync.
+
+    A bare UPDATE: this is called on every block change, and loading the row would
+    read the whole structured_content (megabytes for a book) to change one integer.
+    """
+    values: dict = {"last_block_idx": body.block_idx}
     if body.playing:
-        document.last_played_at = datetime.now(tz=dt.UTC)
+        values["last_played_at"] = datetime.now(tz=dt.UTC)
+    result = await db.exec(
+        update(Document).where(col(Document.id) == document_id, col(Document.user_id) == user.id).values(**values)
+    )
     await db.commit()
+    if result.rowcount == 0:
+        raise ResourceNotFoundError(Document.__name__, document_id)
     return {"ok": True}
 
 

@@ -159,16 +159,55 @@ export function PlaybackOverlay({
   }, [findElementsByAudioIdx, currentBlock]);
 
   // --- Position save ---
+  // Every block change saves, but never more often than the interval while playing:
+  // a burst (holding j, a synthesizer skipping through the document) collapses into
+  // one trailing save. Pausing saves at once, so the resting position is never stale.
 
   const documentIdRef = useRef(documentId);
   documentIdRef.current = documentId;
+  const lastPositionSaveRef = useRef(0);
+  const pendingPositionRef = useRef<{ block_idx: number; playing: boolean } | null>(null);
+  const positionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const savePosition = useCallback((position: { block_idx: number; playing: boolean }) => {
+    if (!documentIdRef.current) return;
+    lastPositionSaveRef.current = Date.now();
+    api.patch(`/v1/documents/${documentIdRef.current}/position`, position).catch(() => {});
+  }, [api]);
+
+  const flushPendingPosition = useCallback(() => {
+    if (positionSaveTimerRef.current) clearTimeout(positionSaveTimerRef.current);
+    positionSaveTimerRef.current = null;
+    const pending = pendingPositionRef.current;
+    pendingPositionRef.current = null;
+    if (pending) savePosition(pending);
+  }, [savePosition]);
+
   useEffect(() => {
     if (!documentIdRef.current || currentBlock < 0) return;
-    api.patch(`/v1/documents/${documentIdRef.current}/position`, {
-      block_idx: currentBlock,
-      playing: isPlaying,
-    }).catch(() => {});
-  }, [currentBlock, isPlaying, api]);
+    const POSITION_SAVE_MIN_INTERVAL_MS = 2000;
+    const position = { block_idx: currentBlock, playing: isPlaying };
+    const sinceLast = Date.now() - lastPositionSaveRef.current;
+    if (!isPlaying || sinceLast >= POSITION_SAVE_MIN_INTERVAL_MS) {
+      if (positionSaveTimerRef.current) clearTimeout(positionSaveTimerRef.current);
+      positionSaveTimerRef.current = null;
+      pendingPositionRef.current = null;
+      savePosition(position);
+      return;
+    }
+    pendingPositionRef.current = position;
+    if (!positionSaveTimerRef.current) {
+      positionSaveTimerRef.current = setTimeout(flushPendingPosition, POSITION_SAVE_MIN_INTERVAL_MS - sinceLast);
+    }
+  }, [currentBlock, isPlaying, savePosition, flushPendingPosition]);
+
+  useEffect(() => {
+    window.addEventListener("pagehide", flushPendingPosition);
+    return () => {
+      window.removeEventListener("pagehide", flushPendingPosition);
+      flushPendingPosition();
+    };
+  }, [flushPendingPosition]);
 
   // --- Scroll handling ---
 
