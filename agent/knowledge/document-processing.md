@@ -346,7 +346,7 @@ Processors extract file content into markdown pages via `process_with_billing`. 
 To add a new format: create `processors/<format>.py` with config + extract(), add entry to `/supported-formats`.
 To add a new AI backend: subclass `VisionExtractor`, implement `_call_api_for_page` and `_call_api_for_image`.
 
-**CPU-bound work** uses a dedicated `ThreadPoolExecutor` (`types.cpu_executor`) so heavy PDF processing doesn't starve quick `to_thread` calls. `process_pages_to_document` and `estimate_document_tokens` run on this executor to avoid blocking the event loop.
+**CPU-bound work** uses a dedicated `ThreadPoolExecutor` (`types.cpu_executor`) so heavy PDF processing doesn't starve quick `to_thread` calls. `process_pages_to_document` (pure Python, so the interpreter switches threads under it) runs there without blocking the event loop; PyMuPDF work like `estimate_document_tokens` runs there too, but blocks the loop for the length of each C call (see the GIL gotcha under Free PDF Extraction).
 
 ## Key Files
 

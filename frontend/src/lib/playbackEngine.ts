@@ -621,6 +621,10 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
     const oldModel = model;
     const oldVoice = voiceSlug;
 
+    // A voice change is the way out of a failing synthesizer: start it clean
+    playbackError = null;
+    consecutiveSynthesisFailures = 0;
+
     model = newModel;
     voiceSlug = newVoiceSlug;
 

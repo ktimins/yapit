@@ -712,9 +712,13 @@ describe("createPlaybackEngine", () => {
       expect(e.getSnapshot().currentBlock).toBe(3);
       expect(e.getSnapshot().playbackError).toBe("Audio generation keeps failing");
 
-      // Pressing play again gets a fresh budget of retries
+      // Pressing play again gets a fresh budget: blocks 3, 4, 5 fail before it stops again
       e.play();
       expect(e.getSnapshot().playbackError).toBeNull();
+      await vi.waitFor(() => {
+        expect(e.getSnapshot().status).toBe("stopped");
+      });
+      expect(e.getSnapshot().currentBlock).toBe(5);
     });
 
     it("transitions from buffering to playing when first block is skipped", async () => {
