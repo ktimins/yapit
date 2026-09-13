@@ -675,6 +675,48 @@ describe("createPlaybackEngine", () => {
       });
     });
 
+    it("stops with an error after repeated recoverable synthesis failures", async () => {
+      const synth = mockSynthesizer();
+      let errorMsg: string | null = null;
+      synth.getError = () => errorMsg;
+      synth.isRecoverable = () => true;
+      // Block 0 plays; everything after it fails the way a broken browser TTS does
+      synth.onSynthesize = (blockIdx) => {
+        if (blockIdx === 0) {
+          errorMsg = null;
+          return Promise.resolve(FAKE_AUDIO);
+        }
+        errorMsg = "Kernel failed";
+        return Promise.resolve(null);
+      };
+
+      const d = makeDeps({ synthesizer: synth });
+      const e = createPlaybackEngine(d);
+
+      e.setVoice("kokoro", "af_heart");
+      e.setDocument("doc-1", makeBlocks(20));
+      e.play();
+
+      await vi.waitFor(() => {
+        expect(e.getSnapshot().status).toBe("playing");
+      });
+
+      const setOnEnded = d.audioPlayer.setOnEnded as Mock;
+      const onEnded = setOnEnded.mock.calls.at(-1)?.[0];
+      onEnded();
+
+      // Blocks 1, 2, 3 fail → stop on the third, not at the end of the document
+      await vi.waitFor(() => {
+        expect(e.getSnapshot().status).toBe("stopped");
+      });
+      expect(e.getSnapshot().currentBlock).toBe(3);
+      expect(e.getSnapshot().playbackError).toBe("Audio generation keeps failing");
+
+      // Pressing play again gets a fresh budget of retries
+      e.play();
+      expect(e.getSnapshot().playbackError).toBeNull();
+    });
+
     it("transitions from buffering to playing when first block is skipped", async () => {
       const synth = mockSynthesizer();
       let callCount = 0;

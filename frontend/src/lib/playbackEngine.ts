@@ -48,6 +48,8 @@ const BATCH_SIZE = 8;
 const REFILL_THRESHOLD = 8;
 const MIN_BUFFER_TO_START = 1;
 const EVICT_BEHIND = 32;
+/** A recoverable synthesis error skips the block; this many in a row means nothing will play. */
+const MAX_CONSECUTIVE_SYNTHESIS_FAILURES = 3;
 
 // --- Variant key: `${blockIdx}:${model}:${voice}` ---
 
@@ -108,6 +110,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
   let totalDuration = 0;
   let initialTotalEstimate = 0;
   let playbackError: string | null = null;
+  let consecutiveSynthesisFailures = 0;
   const durationCorrections = new Map<number, number>();
 
   const audioCache = new Map<VariantKey, AudioBufferData>();
@@ -275,10 +278,20 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
           engineStop();
           return;
         }
+        // Skipping a failed block is right for one bad block. When every block fails
+        // (browser TTS that can't run here), skipping would race silently through the
+        // whole document, saving a position the user never heard.
+        if (err && ++consecutiveSynthesisFailures >= MAX_CONSECUTIVE_SYNTHESIS_FAILURES) {
+          console.error("[PlaybackEngine] Synthesis failed repeatedly, stopping:", err);
+          playbackError = "Audio generation keeps failing";
+          engineStop();
+          return;
+        }
         console.debug("[PlaybackEngine] playBlock: block skipped/failed, advancing", { blockIdx, error: err });
         advanceToNext();
         return;
       }
+      consecutiveSynthesisFailures = 0;
       notify();
       await startAudioPlayback(audioData, blockIdx);
     }
@@ -530,6 +543,7 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
     if (!blocks.length) return;
 
     playbackError = null;
+    consecutiveSynthesisFailures = 0;
     synthesizer.clearError();
 
     let startBlock = currentBlock;
