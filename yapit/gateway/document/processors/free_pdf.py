@@ -19,6 +19,11 @@ config = ProcessorConfig(
     extraction_cache_prefix=None,
 )
 
+# Without this, dict mode decodes every image on the page into the result. Scanned
+# books (one full-page image per page) then cost ~400 ms/page instead of ~2 ms, and the
+# image blocks are discarded below anyway.
+_TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
+
 
 def _extract_page(page: pymupdf.Page) -> str:
     """Extract text from a single page using dict mode with rotated text filtering.
@@ -27,7 +32,7 @@ def _extract_page(page: pymupdf.Page) -> str:
     than ~60° from horizontal (|dx| < 0.5) are dropped — these are typically figure
     axis labels, rotated watermarks, or arXiv sidebar stamps.
     """
-    d = page.get_text("dict")
+    d = page.get_text("dict", flags=_TEXT_FLAGS)
     blocks = []
     for block in d["blocks"]:
         if block["type"] != 0:

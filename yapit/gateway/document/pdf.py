@@ -69,8 +69,17 @@ def extract_images_from_page(doc: pymupdf.Document, page_idx: int) -> list[Extra
     return images
 
 
+MIN_SCAN_PX = 600
+SCAN_ASPECT_TOLERANCE = 0.05
+
+
 def is_scanned_page(doc: pymupdf.Document, page_idx: int) -> bool:
-    """Detect if a page is scanned (one large image covering the page)."""
+    """Detect if a page is scanned: one or two images with the page's shape at scan resolution.
+
+    Every placement API (get_image_rects, get_image_info, get_bboxlog) decodes the image
+    first — ~130 ms per page on a scanned book — so this reads only the pixel size from
+    the object table and compares aspect ratios.
+    """
     page = doc[page_idx]
     image_list = page.get_images(full=True)
 
@@ -79,19 +88,17 @@ def is_scanned_page(doc: pymupdf.Document, page_idx: int) -> bool:
     if len(image_list) > 2:
         return False
 
-    page_area = page.rect.width * page.rect.height
+    page_aspect = page.rect.width / page.rect.height
 
     for img_info in image_list:
-        xref = img_info[0]
-        try:
-            rects = page.get_image_rects(xref)
-            if rects:
-                rendered_rect = rects[0]
-                coverage = (rendered_rect.width * rendered_rect.height) / page_area
-                if coverage > 0.8:
-                    return True
-        except Exception:
+        width, height = img_info[2], img_info[3]
+        if width < MIN_SCAN_PX or height < MIN_SCAN_PX:
             continue
+        aspect = width / height
+        # Rotated pages show the scan turned by 90°
+        for candidate in (aspect, 1 / aspect):
+            if abs(candidate - page_aspect) <= SCAN_ASPECT_TOLERANCE * page_aspect:
+                return True
 
     return False
 

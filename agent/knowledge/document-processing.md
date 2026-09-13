@@ -82,7 +82,9 @@ When given raw HTML (uploaded files): runs defuddle Node API directly, no fetch 
 
 `yapit/gateway/document/processors/free_pdf.py`
 
-PyMuPDF `get_text("dict")` per page — uses dict mode for structured data with direction vectors to filter rotated text (axis labels, watermarks). Fast (<1s for 714-page textbooks), releases GIL (C extension), not cached.
+PyMuPDF `get_text("dict")` per page — uses dict mode for structured data with direction vectors to filter rotated text (axis labels, watermarks). Image blocks are switched off (`TEXT_PRESERVE_IMAGES`), otherwise every page image is decoded into the result: a scanned book went from 312 s to under 1 s. Fast (<1s for 714-page textbooks), not cached.
+
+**Gotcha:** PyMuPDF holds the GIL for the whole of each C call, so running it in `cpu_executor` does not keep the event loop responsive — a 400 ms page call stalls every request for 400 ms. Keep per-call work small; a `ProcessPoolExecutor` is the escape hatch if a PDF class shows up that is slow per page.
 
 **Gotcha:** `get_text("text")` extracts all text indiscriminately — body text, figure labels, annotations. Papers with embedded text in figures (e.g., attention heatmaps) produce garbage.
 
