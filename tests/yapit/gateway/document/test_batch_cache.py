@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from yapit.gateway.api.v1.documents import _check_extraction_cache
 from yapit.gateway.document.batch import BatchJobInfo, BatchJobStatus
+from yapit.gateway.document.orchestration import check_extraction_cache
 from yapit.gateway.document.types import ExtractedPage, ProcessorConfig
 from yapit.gateway.storage import ImageStorage
 
@@ -54,9 +54,7 @@ class TestCheckExtractionCache:
             }
         )
 
-        cached, uncached = await _check_extraction_cache(
-            config, "hash1", pages, mock_cache, mock_image_storage, "user1"
-        )
+        cached, uncached = await check_extraction_cache(config, "hash1", pages, mock_cache, mock_image_storage, "user1")
 
         assert len(cached) == 3
         assert uncached == set()
@@ -72,9 +70,7 @@ class TestCheckExtractionCache:
             }
         )
 
-        cached, uncached = await _check_extraction_cache(
-            config, "hash1", pages, mock_cache, mock_image_storage, "user1"
-        )
+        cached, uncached = await check_extraction_cache(config, "hash1", pages, mock_cache, mock_image_storage, "user1")
 
         assert set(cached.keys()) == {0, 2}
         assert uncached == {1, 3}
@@ -83,7 +79,7 @@ class TestCheckExtractionCache:
     async def test_no_cache(self, mock_cache, mock_image_storage):
         config = make_config()
 
-        cached, uncached = await _check_extraction_cache(
+        cached, uncached = await check_extraction_cache(
             config, "hash1", {0, 1}, mock_cache, mock_image_storage, "user1"
         )
 
@@ -101,7 +97,7 @@ class TestCheckExtractionCache:
         )
         mock_image_storage.exists = AsyncMock(return_value=False)
 
-        cached, uncached = await _check_extraction_cache(
+        cached, uncached = await check_extraction_cache(
             config, "hash1", {0, 1}, mock_cache, mock_image_storage, "user1"
         )
 
@@ -119,7 +115,7 @@ class TestCheckExtractionCache:
         )
         mock_image_storage.exists = AsyncMock(return_value=False)
 
-        cached, uncached = await _check_extraction_cache(
+        cached, uncached = await check_extraction_cache(
             config, "hash1", {0, 1}, mock_cache, mock_image_storage, "user1"
         )
 
@@ -131,7 +127,7 @@ class TestCheckExtractionCache:
     async def test_no_prefix_skips_cache(self, mock_cache, mock_image_storage):
         config = make_config(prefix=None)
 
-        cached, uncached = await _check_extraction_cache(
+        cached, uncached = await check_extraction_cache(
             config, "hash1", {0, 1}, mock_cache, mock_image_storage, "user1"
         )
 
