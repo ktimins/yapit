@@ -67,19 +67,20 @@ async def process_with_billing(
     content_hash: str,
     total_pages: int,
     extraction_cache: Cache,
-    image_storage: ImageStorage,
     file_size: int | None = None,
     pages: list[int] | None = None,
     prompt_hash: str | None = None,
+    cached_pages: dict[int, ExtractedPage] | None = None,
 ) -> DocumentExtractionResult:
     """Orchestrate document extraction with validation, caching, and billing.
 
-    The usage limit was checked and a reservation taken before this runs
-    (`_billing_precheck` in the request handler); here every page that comes
-    back is billed for what it actually cost.
+    The caller has already looked the cache up (`check_extraction_cache`), built
+    `extractor` over the uncached pages only, and for paid processors checked the
+    usage limit and taken a reservation; here every page that comes back is
+    billed for what it actually cost.
 
     1. Validate content type and limits
-    2. Check extraction cache for already-processed pages
+    2. Nothing uncached → return the cached pages
     3. Extract uncached pages, caching each as it completes
     4. Bill all successful pages
     5. Return merged result (cached + fresh pages)
@@ -98,12 +99,10 @@ async def process_with_billing(
             f"Document size {file_size} bytes exceeds the maximum allowed size of {config.max_file_size} bytes."
         )
 
-    # 2. Check extraction cache
+    # 2. Nothing left to extract?
+    cached_pages = cached_pages or {}
     requested_pages = set(pages) if pages else set(range(total_pages))
-    cached_pages, uncached_pages = await check_extraction_cache(
-        config, content_hash, requested_pages, extraction_cache, image_storage, user_id, prompt_hash
-    )
-    if not uncached_pages:
+    if not requested_pages - cached_pages.keys():
         return DocumentExtractionResult(pages=cached_pages, extraction_method=config.slug)
 
     # 3. Extract and cache pages

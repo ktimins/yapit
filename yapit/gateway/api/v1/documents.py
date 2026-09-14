@@ -976,6 +976,7 @@ async def _run_extraction(
     redis: RedisClient,
     ratelimit_key: str,
     extraction_prompt: str | None = None,
+    cached_pages: dict[int, ExtractedPage] | None = None,
 ) -> None:
     """Background task: extract document, create in DB, store result in Redis."""
     ext_log = logger.bind(extraction_id=extraction_id, user_id=user_id, content_hash=content_hash)
@@ -1009,7 +1010,6 @@ async def _run_extraction(
                     content_hash=content_hash,
                     total_pages=total_pages,
                     extraction_cache=extraction_cache,
-                    image_storage=image_storage,
                     file_size=file_size,
                     pages=pages,
                 )
@@ -1023,7 +1023,6 @@ async def _run_extraction(
                 content_hash=content_hash,
                 total_pages=total_pages,
                 extraction_cache=extraction_cache,
-                image_storage=image_storage,
                 file_size=file_size,
                 pages=pages,
             )
@@ -1038,11 +1037,12 @@ async def _run_extraction(
             if ai_transform:
                 assert ai_extractor is not None and ai_extractor_config is not None
                 config = ai_extractor_config
+                requested = set(pages) if pages else set(range(total_pages))
                 extractor = ai_extractor.extract(
                     content,
                     content_type,
                     content_hash,
-                    pages,
+                    sorted(requested - (cached_pages or {}).keys()),
                     user_id=user_id,
                     cancel_key=cancel_key,
                     prompt_override=extraction_prompt,
@@ -1061,10 +1061,10 @@ async def _run_extraction(
                 content_hash=content_hash,
                 total_pages=total_pages,
                 extraction_cache=extraction_cache,
-                image_storage=image_storage,
                 file_size=file_size,
                 pages=pages,
                 prompt_hash=prompt_hash,
+                cached_pages=cached_pages,
             )
             processor_slug = config.slug
             ext_log.info(
@@ -1165,7 +1165,7 @@ async def _run_extraction(
             ext_log.exception("Failed to store extraction error")
     finally:
         await redis.decr(ratelimit_key)
-        # Billing happened per page; the precheck reservation has done its job.
+        # Billed per page above; release the precheck reservation.
         if ai_transform:
             await release_reservation(redis, user_id, content_hash)
 
@@ -1288,11 +1288,13 @@ async def create_document(
             detail="Too many concurrent document extractions. Please wait for current extractions to complete.",
         )
 
-    # Billing pre-check (sync — returns 402 immediately)
+    # One cache lookup per request: it decides what the precheck estimates and
+    # what the extractor is asked for.
+    cached_pages: dict[int, ExtractedPage] = {}
     if req.ai_transform:
         assert ai_extractor_config is not None  # checked above
         requested = set(req.pages) if req.pages else set(range(cached_doc.metadata.total_pages))
-        _, uncached = await check_extraction_cache(
+        cached_pages, uncached = await check_extraction_cache(
             ai_extractor_config,
             content_hash,
             requested,
@@ -1301,6 +1303,7 @@ async def create_document(
             user.id,
             _hash_prompt(extraction_prompt) if extraction_prompt else None,
         )
+        # Billing pre-check (sync — returns 402 immediately)
         if uncached:
             await _billing_precheck(
                 config=ai_extractor_config,
@@ -1343,6 +1346,7 @@ async def create_document(
             redis=redis,
             ratelimit_key=ratelimit_key,
             extraction_prompt=extraction_prompt,
+            cached_pages=cached_pages,
         )
     )
     _background_tasks.add(task)

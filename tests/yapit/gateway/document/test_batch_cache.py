@@ -1,4 +1,4 @@
-"""Tests for batch extraction cache-skip logic."""
+"""Tests for the shared AI extraction cache check and the batch path around it."""
 
 from unittest.mock import AsyncMock
 
