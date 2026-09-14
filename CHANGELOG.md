@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+* Fixed free PDF extraction taking minutes on scanned books (Internet Archive and similar): text extraction was decoding every page image only to discard it. A 420-page scan went from 312 s to under a second, and while it ran, every other request to the server was stalled with it.
+* The AI-extraction token estimate no longer runs when the account has no OCR tokens to begin with — it answers at once. The estimate itself had the same image-decoding cost on scanned pages (53 s for the same book, now 0.03 s); scanned pages are now recognised from the image's shape and size instead of its placement.
+* Playback now stops after three blocks in a row fail to synthesize, instead of silently skipping through the whole document (and saving a reading position the listener never reached); the synthesizer's own banner says what failed and offers the cloud voice. Blocks with nothing to voice (symbols, dashes, emoji) are skipped by the in-browser voice without counting as failures, as the server voices already did.
+* Position saves are capped at one per two seconds while playing, with the resting position saved immediately on pause and on leaving the page. The save itself no longer loads the whole document to update one field.
+
 ## v0.4.5 — 2026-09-08
 
 * Fixed every cache write taking about a minute once the audio cache grew to several GB — the size check on each commit summed entry sizes by reading through every stored blob. It now reads a small index instead; the same scan was also behind `/documents/prepare` slowing to 5–6 s. The index is built once when the gateway first starts on an existing cache file.

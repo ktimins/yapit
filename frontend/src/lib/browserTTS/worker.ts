@@ -8,6 +8,7 @@
 
 import { KokoroTTS } from "kokoro-js";
 import type { WorkerMessage, MainMessage } from "./types";
+import { isSpeakable } from "./speakable";
 
 let tts: KokoroTTS | null = null;
 let loadingPromise: Promise<KokoroTTS> | null = null;
@@ -58,6 +59,12 @@ async function processQueue() {
 
     if (generation < cancelledGeneration) {
       post({ type: "error", requestId, error: "cancelled" });
+      continue;
+    }
+
+    // Past this point an error means the engine failed on real words.
+    if (!isSpeakable(text)) {
+      post({ type: "skipped", requestId });
       continue;
     }
 

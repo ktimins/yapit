@@ -154,35 +154,32 @@ def _get_total_available(
     return subscription_remaining + rollover + purchased
 
 
-async def check_usage_limit(
+async def get_available_usage(
     user_id: str,
     usage_type: UsageType,
-    amount: int,
     db: AsyncSession,
     *,
     billing_enabled: bool = True,
     redis: Redis | None = None,
-) -> None:
-    """Check if user has enough remaining usage. Raises UsageLimitExceededError if not.
+) -> tuple[int | None, int]:
+    """Return (available, current usage). available is None when unlimited.
 
-    For token/voice billing, checks waterfall: subscription + rollover + purchased.
-    Free users (no subscription) get limit=0 for paid features.
-    When billing_enabled=False (self-hosting), all limits are bypassed.
+    For token/voice billing, sums the waterfall: subscription + rollover + purchased.
+    Free users (no subscription) get 0 for paid features.
+    When billing_enabled=False (self-hosting), everything is unlimited.
 
-    If redis is provided, also considers pending reservations (in-flight extractions)
-    to prevent race conditions where multiple concurrent requests exceed the limit.
+    If redis is provided, pending reservations (in-flight extractions) are subtracted
+    so concurrent requests can't jointly exceed the limit.
     """
     if not billing_enabled:
-        return
+        return None, 0
 
     subscription = await get_user_subscription(user_id, db)
     plan = await get_effective_plan(subscription, db)
 
     limit = _get_limit_for_usage_type(plan, usage_type)
-
-    # None means unlimited
     if limit is None:
-        return
+        return None, 0
 
     # Get current usage (need subscription for usage period)
     current = 0
@@ -193,15 +190,32 @@ async def check_usage_limit(
     subscription_remaining = max(0, limit - current)
     total_available = _get_total_available(subscription, usage_type, subscription_remaining)
 
-    # Subtract pending reservations (in-flight extractions) to prevent race condition
     if redis is not None:
         pending = await get_pending_reservations_total(redis, user_id)
         total_available = max(0, total_available - pending)
 
-    if amount > total_available:
+    return total_available, current
+
+
+async def check_usage_limit(
+    user_id: str,
+    usage_type: UsageType,
+    amount: int,
+    db: AsyncSession,
+    *,
+    billing_enabled: bool = True,
+    redis: Redis | None = None,
+) -> None:
+    """Raise UsageLimitExceededError unless `amount` fits in the user's available usage."""
+    available, current = await get_available_usage(
+        user_id, usage_type, db, billing_enabled=billing_enabled, redis=redis
+    )
+    if available is None:
+        return
+    if amount > available:
         raise UsageLimitExceededError(
             usage_type=usage_type,
-            limit=total_available,
+            limit=available,
             current=current,
             requested=amount,
         )

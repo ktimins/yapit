@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Res
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import BaseModel, Field, HttpUrl, StringConstraints, UrlConstraints, ValidationError
-from sqlmodel import col, func, select
+from sqlmodel import col, func, select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from yapit.contracts import (
@@ -69,13 +69,13 @@ from yapit.gateway.document.types import (
 )
 from yapit.gateway.document.website import extract_website_content
 from yapit.gateway.domain_models import Document, DocumentMetadata, UsageType, UserPreferences, UserSubscription
-from yapit.gateway.exceptions import APIError, ResourceNotFoundError
+from yapit.gateway.exceptions import APIError, ResourceNotFoundError, UsageLimitExceededError
 from yapit.gateway.metrics import log_error, log_event
 from yapit.gateway.rate_limit import limiter
 from yapit.gateway.reservations import create_reservation, release_reservation
 from yapit.gateway.stack_auth.users import User
 from yapit.gateway.storage import ImageStorage
-from yapit.gateway.usage import check_usage_limit
+from yapit.gateway.usage import check_usage_limit, get_available_usage
 
 
 def _hash_prompt(prompt: str) -> str:
@@ -716,6 +716,19 @@ async def _billing_precheck(
     redis: RedisClient,
 ) -> None:
     """Estimate tokens, check usage limit, create reservation."""
+    # The estimate opens every page; skip it when no balance could pass the check.
+    available, current = await get_available_usage(
+        user_id, UsageType.ocr_tokens, db, billing_enabled=billing_enabled, redis=redis
+    )
+    if available == 0:
+        raise UsageLimitExceededError(
+            usage_type=UsageType.ocr_tokens,
+            limit=0,
+            current=current,
+            requested=0,
+            message="Out of OCR tokens — you have 0 available.",
+        )
+
     estimate = await asyncio.get_running_loop().run_in_executor(
         cpu_executor, estimate_document_tokens, content, content_type, config.output_token_multiplier, pages
     )
@@ -1559,15 +1572,25 @@ class PositionUpdate(BaseModel):
 
 @router.patch("/{document_id}/position")
 async def update_position(
-    document: CurrentDoc,
+    document_id: UUID,
     body: PositionUpdate,
     db: DbSession,
+    user: AuthenticatedUser,
 ) -> dict:
-    """Update playback position for cross-device sync."""
-    document.last_block_idx = body.block_idx
+    """Update playback position for cross-device sync.
+
+    A bare UPDATE: this is called on every block change, and loading the row would
+    read the whole structured_content (megabytes for a book) to change one integer.
+    """
+    values: dict = {"last_block_idx": body.block_idx}
     if body.playing:
-        document.last_played_at = datetime.now(tz=dt.UTC)
+        values["last_played_at"] = datetime.now(tz=dt.UTC)
+    result = await db.exec(
+        update(Document).where(col(Document.id) == document_id, col(Document.user_id) == user.id).values(**values)
+    )
     await db.commit()
+    if result.rowcount == 0:
+        raise ResourceNotFoundError(Document.__name__, document_id)
     return {"ok": True}
 
 

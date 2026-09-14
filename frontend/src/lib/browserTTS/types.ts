@@ -11,6 +11,8 @@ export interface VoiceInfo {
 export type WorkerMessage =
   | { type: "device"; device: TTSDevice; dtype: TTSDtype }
   | { type: "audio"; requestId: string; audioData: ArrayBuffer; sampleRate: number }
+  /** Nothing to voice in this block; not a failure of the engine. */
+  | { type: "skipped"; requestId: string }
   | { type: "error"; requestId: string; error: string };
 
 // Messages FROM main thread TO worker
