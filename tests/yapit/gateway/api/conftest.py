@@ -1,6 +1,8 @@
 import asyncio
+import datetime as dt
 import shutil
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
@@ -19,6 +21,7 @@ from yapit.gateway.cache import CacheConfig
 from yapit.gateway.config import Settings
 from yapit.gateway.db import close_db, create_session, get_engine, init_db
 from yapit.gateway.deps import create_cache, create_image_storage
+from yapit.gateway.domain_models import Plan, PlanTier, SubscriptionStatus, UsagePeriod, UserSubscription
 from yapit.gateway.markdown.transformer import DocumentTransformer
 from yapit.gateway.stack_auth.users import User
 
@@ -187,3 +190,52 @@ async def client(app):
 async def session():
     async with create_session() as session:
         yield session
+
+
+@pytest.fixture
+async def subscribed_user(session):
+    """Create a subscribed user with a plan and usage data for waterfall testing."""
+    now = datetime.now(tz=dt.UTC)
+
+    plan = Plan(
+        tier=PlanTier.basic,
+        name="Test Basic",
+        server_kokoro_characters=10_000,
+        premium_voice_characters=5_000,
+        ocr_tokens=100_000,
+    )
+    session.add(plan)
+    await session.flush()
+
+    # Create subscription with rollover/purchased for waterfall testing
+    subscription = UserSubscription(
+        user_id="test-subscribed-user",
+        plan_id=plan.id,
+        status=SubscriptionStatus.active,
+        current_period_start=now - timedelta(days=1),
+        current_period_end=now + timedelta(days=29),
+        rollover_tokens=50_000,
+        rollover_voice_chars=2_000,
+        purchased_tokens=25_000,
+        purchased_voice_chars=1_000,
+    )
+    session.add(subscription)
+
+    # Create usage period (starts empty)
+    usage_period = UsagePeriod(
+        user_id="test-subscribed-user",
+        period_start=subscription.current_period_start,
+        period_end=subscription.current_period_end,
+        server_kokoro_characters=0,
+        premium_voice_characters=0,
+        ocr_tokens=0,
+    )
+    session.add(usage_period)
+    await session.commit()
+
+    return {
+        "user_id": "test-subscribed-user",
+        "plan": plan,
+        "subscription": subscription,
+        "usage_period": usage_period,
+    }
