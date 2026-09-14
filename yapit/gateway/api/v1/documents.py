@@ -55,7 +55,11 @@ from yapit.gateway.document.batch import BatchJobInfo, BatchJobStatus, get_batch
 from yapit.gateway.document.batch_poller import create_document_from_batch
 from yapit.gateway.document.defuddle_client import extract_website
 from yapit.gateway.document.http import download_document, resolve_relative_urls
-from yapit.gateway.document.orchestration import process_pages_to_document, process_with_billing
+from yapit.gateway.document.orchestration import (
+    check_extraction_cache,
+    process_pages_to_document,
+    process_with_billing,
+)
 from yapit.gateway.document.pdf import PER_PAGE_TOLERANCE, estimate_document_tokens
 from yapit.gateway.document.processors import epub
 from yapit.gateway.document.processors import free_pdf as pdf
@@ -735,6 +739,22 @@ async def _billing_precheck(
     tolerance = PER_PAGE_TOLERANCE * estimate.num_pages
     amount_to_check = max(0, estimate.total_tokens - tolerance)
 
+    await log_event(
+        "extraction_estimate",
+        processor_slug=config.slug,
+        user_id=user_id,
+        data={
+            "content_hash": content_hash,
+            "num_pages": estimate.num_pages,
+            "text_pages": estimate.text_pages,
+            "raster_pages": estimate.raster_pages,
+            "total_text_chars": estimate.total_text_chars,
+            "estimated_tokens": estimate.total_tokens,
+            "tolerance": tolerance,
+            "amount_checked": amount_to_check,
+        },
+    )
+
     await check_usage_limit(
         user_id,
         UsageType.ocr_tokens,
@@ -744,42 +764,6 @@ async def _billing_precheck(
         redis=redis,
     )
     await create_reservation(redis, user_id, content_hash, estimate.total_tokens)
-
-
-async def _check_extraction_cache(
-    config: ProcessorConfig,
-    content_hash: str,
-    requested_pages: set[int],
-    extraction_cache: Cache,
-    image_storage: ImageStorage,
-    user_id: str,
-    prompt_hash: str | None = None,
-) -> tuple[dict[int, ExtractedPage], set[int]]:
-    """Check which pages are already in extraction cache.
-
-    Returns (cached_pages, uncached_pages). Invalidates cache if stored images
-    were deleted (e.g. after document deletion).
-    """
-    if not config.extraction_cache_prefix:
-        return {}, requested_pages
-
-    cache_key_map = {config.extraction_cache_key(content_hash, idx, prompt_hash): idx for idx in requested_pages}
-    cached_data = await extraction_cache.batch_retrieve(list(cache_key_map.keys()))
-
-    cached_pages: dict[int, ExtractedPage] = {}
-    for key, data in cached_data.items():
-        page_idx = cache_key_map[key]
-        cached_pages[page_idx] = ExtractedPage.model_validate_json(data)
-        await log_event("extraction_cache_hit", processor_slug=config.slug, page_idx=page_idx, user_id=user_id)
-
-    uncached_pages = requested_pages - set(cached_pages.keys())
-
-    has_cached_images = any(page.images for page in cached_pages.values())
-    if has_cached_images and not await image_storage.exists(content_hash):
-        logger.info(f"Images missing for {content_hash}, invalidating extraction cache")
-        return {}, requested_pages
-
-    return cached_pages, uncached_pages
 
 
 async def _submit_batch_extraction(
@@ -819,8 +803,7 @@ async def _submit_batch_extraction(
 
     prompt_hash = _hash_prompt(extraction_prompt) if extraction_prompt else None
 
-    # Check extraction cache — same pattern as process_with_billing (processing.py)
-    cached_pages, uncached_pages = await _check_extraction_cache(
+    cached_pages, uncached_pages = await check_extraction_cache(
         ai_extractor_config, content_hash, set(pages_requested), extraction_cache, image_storage, user_id, prompt_hash
     )
 
@@ -980,7 +963,6 @@ async def _run_extraction(
     file_size: int,
     ai_transform: bool,
     arxiv_id: str | None,
-    billing_enabled: bool,
     title: str | None,
     pages: list[int] | None,
     user_id: str,
@@ -994,6 +976,7 @@ async def _run_extraction(
     redis: RedisClient,
     ratelimit_key: str,
     extraction_prompt: str | None = None,
+    cached_pages: dict[int, ExtractedPage] | None = None,
 ) -> None:
     """Background task: extract document, create in DB, store result in Redis."""
     ext_log = logger.bind(extraction_id=extraction_id, user_id=user_id, content_hash=content_hash)
@@ -1023,14 +1006,10 @@ async def _run_extraction(
                     config=pdf.config,
                     extractor=pdf.extract(content, pages),
                     user_id=user_id,
-                    content=content,
                     content_type=content_type,
                     content_hash=content_hash,
                     total_pages=total_pages,
                     extraction_cache=extraction_cache,
-                    image_storage=image_storage,
-                    redis=redis,
-                    billing_enabled=billing_enabled,
                     file_size=file_size,
                     pages=pages,
                 )
@@ -1040,14 +1019,10 @@ async def _run_extraction(
                 config=epub.config,
                 extractor=epub.extract(content, pages, image_storage, content_hash),
                 user_id=user_id,
-                content=content,
                 content_type=content_type,
                 content_hash=content_hash,
                 total_pages=total_pages,
                 extraction_cache=extraction_cache,
-                image_storage=image_storage,
-                redis=redis,
-                billing_enabled=billing_enabled,
                 file_size=file_size,
                 pages=pages,
             )
@@ -1062,11 +1037,12 @@ async def _run_extraction(
             if ai_transform:
                 assert ai_extractor is not None and ai_extractor_config is not None
                 config = ai_extractor_config
+                requested = set(pages) if pages else set(range(total_pages))
                 extractor = ai_extractor.extract(
                     content,
                     content_type,
                     content_hash,
-                    pages,
+                    sorted(requested - (cached_pages or {}).keys()),
                     user_id=user_id,
                     cancel_key=cancel_key,
                     prompt_override=extraction_prompt,
@@ -1081,17 +1057,14 @@ async def _run_extraction(
                 config=config,
                 extractor=extractor,
                 user_id=user_id,
-                content=content,
                 content_type=content_type,
                 content_hash=content_hash,
                 total_pages=total_pages,
                 extraction_cache=extraction_cache,
-                image_storage=image_storage,
-                redis=redis,
-                billing_enabled=billing_enabled,
                 file_size=file_size,
                 pages=pages,
                 prompt_hash=prompt_hash,
+                cached_pages=cached_pages,
             )
             processor_slug = config.slug
             ext_log.info(
@@ -1192,8 +1165,7 @@ async def _run_extraction(
             ext_log.exception("Failed to store extraction error")
     finally:
         await redis.decr(ratelimit_key)
-        # Safety net: release precheck reservation regardless of outcome.
-        # Harmless no-op if process_with_billing() already released it.
+        # Billed per page above; release the precheck reservation.
         if ai_transform:
             await release_reservation(redis, user_id, content_hash)
 
@@ -1316,20 +1288,34 @@ async def create_document(
             detail="Too many concurrent document extractions. Please wait for current extractions to complete.",
         )
 
-    # Billing pre-check (sync — returns 402 immediately)
+    # One cache lookup per request: it decides what the precheck estimates and
+    # what the extractor is asked for.
+    cached_pages: dict[int, ExtractedPage] = {}
     if req.ai_transform:
         assert ai_extractor_config is not None  # checked above
-        await _billing_precheck(
-            config=ai_extractor_config,
-            content=cached_doc.content,
-            content_type=cached_doc.metadata.content_type,
-            content_hash=content_hash,
-            user_id=user.id,
-            pages=req.pages,
-            db=db,
-            billing_enabled=settings.billing_enabled,
-            redis=redis,
+        requested = set(req.pages) if req.pages else set(range(cached_doc.metadata.total_pages))
+        cached_pages, uncached = await check_extraction_cache(
+            ai_extractor_config,
+            content_hash,
+            requested,
+            extraction_cache,
+            image_storage,
+            user.id,
+            _hash_prompt(extraction_prompt) if extraction_prompt else None,
         )
+        # Billing pre-check (sync — returns 402 immediately)
+        if uncached:
+            await _billing_precheck(
+                config=ai_extractor_config,
+                content=cached_doc.content,
+                content_type=cached_doc.metadata.content_type,
+                content_hash=content_hash,
+                user_id=user.id,
+                pages=sorted(uncached),
+                db=db,
+                billing_enabled=settings.billing_enabled,
+                redis=redis,
+            )
 
     arxiv_id = _detect_arxiv_id(cached_doc.fetch_url) if cached_doc.fetch_url else None
 
@@ -1345,7 +1331,6 @@ async def create_document(
             file_size=cached_doc.metadata.file_size or len(cached_doc.content),
             ai_transform=req.ai_transform,
             arxiv_id=arxiv_id,
-            billing_enabled=settings.billing_enabled,
             title=cached_doc.metadata.title
             or req.title
             or (Path(cached_doc.metadata.file_name).stem if cached_doc.metadata.file_name else None),
@@ -1361,6 +1346,7 @@ async def create_document(
             redis=redis,
             ratelimit_key=ratelimit_key,
             extraction_prompt=extraction_prompt,
+            cached_pages=cached_pages,
         )
     )
     _background_tasks.add(task)

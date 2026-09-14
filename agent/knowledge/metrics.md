@@ -43,7 +43,7 @@ Why this exists: Swarm deploys race the gateway (`update_config: start-first`) a
 
 ### Cache
 - `document_cache_hit` — URL/upload cache hit
-- `extraction_cache_hit` — All requested pages already cached
+- `extraction_cache_hit` — One per requested page found in the AI extraction cache (`page_idx`); logged once per request, by the handler's lookup
 - `cache_hit` — Variant already synthesized (audio cache)
 
 ### URL Fetching

@@ -1,17 +1,16 @@
-"""Tests for document extraction orchestration (processing.py).
+"""Tests for document extraction orchestration (orchestration.py).
 
 These tests use fake extractors - no API calls, no complex mocking.
 """
 
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from yapit.gateway.document.orchestration import process_with_billing
 from yapit.gateway.document.types import ExtractedPage, PageResult, ProcessorConfig
 from yapit.gateway.exceptions import ValidationError
-from yapit.gateway.storage import ImageStorage
 
 
 def make_config(
@@ -110,21 +109,9 @@ def mock_cache():
     return cache
 
 
-@pytest.fixture
-def mock_image_storage():
-    storage = AsyncMock(spec=ImageStorage)
-    storage.exists = AsyncMock(return_value=True)
-    return storage
-
-
-@pytest.fixture
-def mock_redis():
-    return AsyncMock()
-
-
 class TestValidation:
     @pytest.mark.asyncio
-    async def test_rejects_unsupported_content_type(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_rejects_unsupported_content_type(self, mock_cache):
         config = make_config()
 
         with pytest.raises(ValidationError, match="Unsupported content type"):
@@ -132,18 +119,14 @@ class TestValidation:
                 config=config,
                 extractor=fake_extractor([]),
                 user_id="user-1",
-                content=b"test",
                 content_type="image/png",  # Not in supported types
                 content_hash="abc123",
                 total_pages=1,
                 extraction_cache=mock_cache,
-                image_storage=mock_image_storage,
-                redis=mock_redis,
-                billing_enabled=True,
             )
 
     @pytest.mark.asyncio
-    async def test_rejects_too_many_pages(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_rejects_too_many_pages(self, mock_cache):
         config = make_config()
 
         with pytest.raises(ValidationError, match="maximum of 100 pages"):
@@ -151,25 +134,17 @@ class TestValidation:
                 config=config,
                 extractor=fake_extractor([]),
                 user_id="user-1",
-                content=b"test",
                 content_type="application/pdf",
                 content_hash="abc123",
                 total_pages=101,  # Exceeds max_pages=100
                 extraction_cache=mock_cache,
-                image_storage=mock_image_storage,
-                redis=mock_redis,
-                billing_enabled=True,
             )
 
 
 class TestCaching:
     @pytest.mark.asyncio
-    async def test_returns_cached_pages_without_extraction(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_returns_cached_pages_without_extraction(self, mock_cache):
         config = make_config()
-
-        cached_page = ExtractedPage(markdown="Cached content", images=[]).model_dump_json().encode()
-        cache_key = config.extraction_cache_key("abc123", 0)
-        mock_cache.batch_retrieve = AsyncMock(return_value={cache_key: cached_page})
 
         extractor_called = False
 
@@ -182,35 +157,28 @@ class TestCaching:
             config=config,
             extractor=should_not_be_called(),
             user_id="user-1",
-            content=b"test",
             content_type="application/pdf",
             content_hash="abc123",
             total_pages=1,
             extraction_cache=mock_cache,
-            image_storage=mock_image_storage,
-            redis=mock_redis,
-            billing_enabled=True,
+            cached_pages={0: ExtractedPage(markdown="Cached content", images=[])},
         )
 
         assert not extractor_called
         assert result.pages[0].markdown == "Cached content"
 
     @pytest.mark.asyncio
-    async def test_stores_extracted_pages_to_cache(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_stores_extracted_pages_to_cache(self, mock_cache):
         config = make_config()
 
         result = await process_with_billing(
             config=config,
             extractor=fake_extractor([(0, "Fresh content")]),
             user_id="user-1",
-            content=b"test",
             content_type="application/pdf",
             content_hash="abc123",
             total_pages=1,
             extraction_cache=mock_cache,
-            image_storage=mock_image_storage,
-            redis=mock_redis,
-            billing_enabled=True,
         )
 
         mock_cache.store.assert_called_once()
@@ -219,46 +187,10 @@ class TestCaching:
 
 class TestBilling:
     @pytest.mark.asyncio
-    async def test_paid_processor_checks_usage_limit(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_paid_processor_records_usage_per_page(self, mock_cache):
         config = make_config(is_paid=True)
 
-        mock_estimate = Mock()
-        mock_estimate.num_pages = 1
-        mock_estimate.total_tokens = 1000
-
         with (
-            patch("yapit.gateway.document.orchestration.estimate_document_tokens", return_value=mock_estimate),
-            patch("yapit.gateway.document.orchestration.check_usage_limit", new_callable=AsyncMock) as mock_check,
-            patch("yapit.gateway.document.orchestration.record_usage", new_callable=AsyncMock),
-            patch("yapit.gateway.document.orchestration.create_session", _fake_session),
-        ):
-            await process_with_billing(
-                config=config,
-                extractor=fake_extractor([(0, "Content")]),
-                user_id="user-1",
-                content=b"test",
-                content_type="application/pdf",
-                content_hash="abc123",
-                total_pages=1,
-                extraction_cache=mock_cache,
-                image_storage=mock_image_storage,
-                redis=mock_redis,
-                billing_enabled=True,
-            )
-
-            mock_check.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_paid_processor_records_usage_per_page(self, mock_cache, mock_image_storage, mock_redis):
-        config = make_config(is_paid=True)
-
-        mock_estimate = Mock()
-        mock_estimate.num_pages = 3
-        mock_estimate.total_tokens = 3000
-
-        with (
-            patch("yapit.gateway.document.orchestration.estimate_document_tokens", return_value=mock_estimate),
-            patch("yapit.gateway.document.orchestration.check_usage_limit", new_callable=AsyncMock),
             patch("yapit.gateway.document.orchestration.record_usage", new_callable=AsyncMock) as mock_record,
             patch("yapit.gateway.document.orchestration.create_session", _fake_session),
         ):
@@ -266,61 +198,47 @@ class TestBilling:
                 config=config,
                 extractor=fake_extractor([(0, "Page 0"), (1, "Page 1"), (2, "Page 2")]),
                 user_id="user-1",
-                content=b"test",
                 content_type="application/pdf",
                 content_hash="abc123",
                 total_pages=3,
                 extraction_cache=mock_cache,
-                image_storage=mock_image_storage,
-                redis=mock_redis,
-                billing_enabled=True,
             )
 
             assert mock_record.call_count == 3  # One per page
 
     @pytest.mark.asyncio
-    async def test_free_processor_skips_billing(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_free_processor_skips_billing(self, mock_cache):
         config = make_config(is_paid=False)
 
         with (
-            patch("yapit.gateway.document.orchestration.check_usage_limit", new_callable=AsyncMock) as mock_check,
             patch("yapit.gateway.document.orchestration.record_usage", new_callable=AsyncMock) as mock_record,
         ):
             await process_with_billing(
                 config=config,
                 extractor=fake_extractor([(0, "Content")]),
                 user_id="user-1",
-                content=b"test",
                 content_type="application/pdf",
                 content_hash="abc123",
                 total_pages=1,
                 extraction_cache=mock_cache,
-                image_storage=mock_image_storage,
-                redis=mock_redis,
-                billing_enabled=True,
             )
 
-            mock_check.assert_not_called()
             mock_record.assert_not_called()
 
 
 class TestFailedPages:
     @pytest.mark.asyncio
-    async def test_tracks_failed_pages(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_tracks_failed_pages(self, mock_cache):
         config = make_config()
 
         result = await process_with_billing(
             config=config,
             extractor=failing_extractor(fail_pages={1}, total_pages=3),
             user_id="user-1",
-            content=b"test",
             content_type="application/pdf",
             content_hash="abc123",
             total_pages=3,
             extraction_cache=mock_cache,
-            image_storage=mock_image_storage,
-            redis=mock_redis,
-            billing_enabled=True,
         )
 
         assert set(result.pages.keys()) == {0, 2}
@@ -329,17 +247,11 @@ class TestFailedPages:
 
 class TestCancellation:
     @pytest.mark.asyncio
-    async def test_cancelled_pages_not_billed(self, mock_cache, mock_image_storage, mock_redis):
+    async def test_cancelled_pages_not_billed(self, mock_cache):
         """Cancelled pages should not incur billing charges."""
         config = make_config(is_paid=True)
 
-        mock_estimate = Mock()
-        mock_estimate.num_pages = 4
-        mock_estimate.total_tokens = 4000
-
         with (
-            patch("yapit.gateway.document.orchestration.estimate_document_tokens", return_value=mock_estimate),
-            patch("yapit.gateway.document.orchestration.check_usage_limit", new_callable=AsyncMock),
             patch("yapit.gateway.document.orchestration.record_usage", new_callable=AsyncMock) as mock_record,
             patch("yapit.gateway.document.orchestration.create_session", _fake_session),
         ):
@@ -347,14 +259,10 @@ class TestCancellation:
                 config=config,
                 extractor=cancelled_extractor(cancel_after=2, total_pages=4),
                 user_id="user-1",
-                content=b"test",
                 content_type="application/pdf",
                 content_hash="abc123",
                 total_pages=4,
                 extraction_cache=mock_cache,
-                image_storage=mock_image_storage,
-                redis=mock_redis,
-                billing_enabled=True,
             )
 
             # Only pages 0 and 1 should be billed (pages 2, 3 cancelled)

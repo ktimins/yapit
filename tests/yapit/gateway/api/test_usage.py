@@ -17,61 +17,11 @@ from yapit.gateway.domain_models import (
     PlanTier,
     SubscriptionStatus,
     UsageLog,
-    UsagePeriod,
     UsageType,
     UserSubscription,
 )
 from yapit.gateway.exceptions import UsageLimitExceededError
 from yapit.gateway.usage import check_usage_limit, record_usage
-
-
-@pytest.fixture
-async def subscribed_user(session):
-    """Create a subscribed user with a plan and usage data for waterfall testing."""
-    now = datetime.now(tz=dt.UTC)
-
-    plan = Plan(
-        tier=PlanTier.basic,
-        name="Test Basic",
-        server_kokoro_characters=10_000,
-        premium_voice_characters=5_000,
-        ocr_tokens=100_000,
-    )
-    session.add(plan)
-    await session.flush()
-
-    # Create subscription with rollover/purchased for waterfall testing
-    subscription = UserSubscription(
-        user_id="test-subscribed-user",
-        plan_id=plan.id,
-        status=SubscriptionStatus.active,
-        current_period_start=now - timedelta(days=1),
-        current_period_end=now + timedelta(days=29),
-        rollover_tokens=50_000,
-        rollover_voice_chars=2_000,
-        purchased_tokens=25_000,
-        purchased_voice_chars=1_000,
-    )
-    session.add(subscription)
-
-    # Create usage period (starts empty)
-    usage_period = UsagePeriod(
-        user_id="test-subscribed-user",
-        period_start=subscription.current_period_start,
-        period_end=subscription.current_period_end,
-        server_kokoro_characters=0,
-        premium_voice_characters=0,
-        ocr_tokens=0,
-    )
-    session.add(usage_period)
-    await session.commit()
-
-    return {
-        "user_id": "test-subscribed-user",
-        "plan": plan,
-        "subscription": subscription,
-        "usage_period": usage_period,
-    }
 
 
 class TestWaterfallConsumption:
