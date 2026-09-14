@@ -58,17 +58,24 @@ def ssh_cmd(host: str, cmd: str) -> str:
     return result.stdout
 
 
+def _when(iso: str) -> str:
+    """RFC3339 timestamp → 'MM-DD HH:MM' UTC, enough to line an entry up with gateway.jsonl."""
+    return iso[5:16].replace("T", " ")
+
+
 def parse_stack_auth(host: str, hours: int) -> dict:
-    raw = ssh_cmd(host, f"docker logs $(docker ps -q -f name=yapit_stack-auth) --since {hours}h 2>&1")
+    # -t: Stack Auth's own lines carry no timestamp
+    raw = ssh_cmd(host, f"docker logs -t $(docker ps -q -f name=yapit_stack-auth) --since {hours}h 2>&1")
     if not raw.strip():
         return {"error": "no output from Stack Auth container"}
 
     response_times: list[int] = []
     status_counts: dict[int, int] = defaultdict(int)
     errors: dict[str, int] = defaultdict(int)
-    slow: list[tuple[int, int, str, str]] = []
+    slow: list[tuple[int, int, str, str, str]] = []
 
     for line in raw.splitlines():
+        stamp, _, line = line.partition(" ")
         # Response lines: [    RES] [...] METHOD url: STATUS (in Xms)
         m = re.search(r"\[\s+RES\].*?(\w+)\s+(https?://\S+):\s+(\d+)\s+\(in\s+(\d+)ms\)", line)
         if m:
@@ -77,7 +84,7 @@ def parse_stack_auth(host: str, hours: int) -> dict:
             status_counts[status] += 1
             if ms > 1000:
                 path = url.split("0.0.0.0:8102")[-1] if "0.0.0.0:8102" in url else url
-                slow.append((ms, status, method, path[:80]))
+                slow.append((ms, status, method, path[:80], _when(stamp)))
             continue
 
         # Error lines
@@ -110,8 +117,8 @@ def parse_traefik(host: str, hours: int) -> dict:
     total = 0
     status_counts: dict[int, int] = defaultdict(int)
     by_service: dict[str, list[float]] = defaultdict(list)
-    slow: list[tuple[float, int, str, str, str]] = []
-    errors_5xx: list[tuple[int, str, str, float]] = []
+    slow: list[tuple[float, int, str, str, str, str]] = []
+    errors_5xx: list[tuple[int, str, str, float, str]] = []
 
     for line in raw.splitlines():
         try:
@@ -125,6 +132,7 @@ def parse_traefik(host: str, hours: int) -> dict:
         service = r.get("ServiceName", "unknown")
         method = r.get("RequestMethod", "?")
         path = r.get("RequestPath", "?")
+        when = _when(r.get("StartUTC", ""))
 
         total += 1
         status_counts[status] += 1
@@ -134,10 +142,10 @@ def parse_traefik(host: str, hours: int) -> dict:
             by_service[service].append(duration_ms)
 
         if duration_ms > 5000 and status != 0:
-            slow.append((duration_ms, status, method, path[:60], service))
+            slow.append((duration_ms, status, method, path[:60], service, when))
 
         if 500 <= status <= 599:
-            errors_5xx.append((status, method, path[:60], duration_ms))
+            errors_5xx.append((status, method, path[:60], duration_ms, when))
 
     if not total:
         return {"error": "no JSON log lines found in Traefik logs"}
@@ -187,8 +195,8 @@ def print_stack_auth(data: dict, plain: bool) -> None:
     for msg, count in data["errors"].items():
         print(f"  error: {count}x {msg}")
 
-    for ms, status, method, path in data["slow_requests"]:
-        print(f"  slow: {ms}ms {status} {method} {path}")
+    for ms, status, method, path, when in data["slow_requests"]:
+        print(f"  slow: {when}Z {ms}ms {status} {method} {path}")
 
     print()
 
@@ -212,11 +220,11 @@ def print_traefik(data: dict, plain: bool) -> None:
             f"    {svc}: n={stats['count']} p50={stats['p50']}ms p95={stats['p95']}ms p99={stats['p99']}ms max={stats['max']}ms"
         )
 
-    for status, method, path, ms in data["errors_5xx"]:
-        print(f"  5xx: {status} {method} {path} ({ms:.0f}ms)")
+    for status, method, path, ms, when in data["errors_5xx"]:
+        print(f"  5xx: {when}Z {status} {method} {path} ({ms:.0f}ms)")
 
-    for ms, status, method, path, svc in data["slow_requests"]:
-        print(f"  slow: {ms:.0f}ms {status} {method} {path} [{svc}]")
+    for ms, status, method, path, svc, when in data["slow_requests"]:
+        print(f"  slow: {when}Z {ms:.0f}ms {status} {method} {path} [{svc}]")
 
     print()
 
