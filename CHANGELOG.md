@@ -1,12 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.4.6 — 2026-09-14
 
-* Fixed free PDF extraction taking minutes on scanned books (Internet Archive and similar): text extraction was decoding every page image only to discard it. A 420-page scan went from 312 s to under a second, and while it ran, every other request to the server was stalled with it.
-* The AI-extraction token estimate no longer runs when the account has no OCR tokens to begin with — it answers at once. The estimate itself had the same image-decoding cost on scanned pages (53 s for the same book, now 0.03 s); scanned pages are now recognised from the image's shape and size instead of its placement.
-* Re-extracting a document with AI when some of its pages are already cached no longer re-extracts (and re-bills) the cached pages, and the up-front token check counts only the pages still to extract — a partly cached document is no longer refused for tokens it would not have spent.
-* Playback now stops after three blocks in a row fail to synthesize, instead of silently skipping through the whole document (and saving a reading position the listener never reached); the synthesizer's own banner says what failed and offers the cloud voice. Blocks with nothing to voice (symbols, dashes, emoji) are skipped by the in-browser voice without counting as failures, as the server voices already did.
-* Position saves are capped at one per two seconds while playing, with the resting position saved immediately on pause and on leaving the page. The save itself no longer loads the whole document to update one field.
+* Fixed free PDF extraction taking minutes on scanned books (Internet Archive and similar): text extraction was decoding every page image only to discard it. A 420-page scan went from 312 s to under a second, and while it ran, every other request to the server was stalled with it. #95
+* The AI-extraction token estimate no longer runs when the account has no OCR tokens to begin with — it answers at once. The estimate itself had the same image-decoding cost on scanned pages (53 s for the same book, now 0.03 s); scanned pages are now recognised from the image's shape and size instead of its placement. #95
+* Re-extracting a document with AI when some of its pages are already cached no longer re-extracts (and re-bills) the cached pages, and the up-front token check counts only the pages still to extract — a partly cached document is no longer refused for tokens it would not have spent. #96
+* Playback now stops after three blocks in a row fail to synthesize, instead of silently skipping through the whole document (and saving a reading position the listener never reached); the synthesizer's own banner says what failed and offers the cloud voice. Blocks with nothing to voice (symbols, dashes, emoji) are skipped by the in-browser voice without counting as failures, as the server voices already did. #95
+* Position saves are capped at one per two seconds while playing, with the resting position saved immediately on pause and on leaving the page. The save itself no longer loads the whole document to update one field. #95
 
 ## v0.4.5 — 2026-09-08
 
