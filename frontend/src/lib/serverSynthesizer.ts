@@ -266,6 +266,9 @@ export function createServerSynthesizer(deps: ServerSynthesizerDeps): Synthesize
         pending.delete(key);
       }
     } else if (msg.status === "skipped") {
+      // A skip is a good outcome for the block: an earlier error must not be read into it
+      lastError = null;
+      lastErrorRecoverable = true;
       if (req) {
         clearTimeout(req.timer);
         req.resolve(null);

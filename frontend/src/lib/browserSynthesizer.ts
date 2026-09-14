@@ -56,6 +56,8 @@ export function createBrowserSynthesizer(): Synthesizer & {
         const req = pending.get(msg.requestId);
         if (!req) break;
         pending.delete(msg.requestId);
+        // A skip is a good outcome for the block: an earlier error must not be read into it
+        lastError = null;
         req.resolve(null);
         break;
       }
