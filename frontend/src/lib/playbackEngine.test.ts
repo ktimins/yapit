@@ -675,7 +675,7 @@ describe("createPlaybackEngine", () => {
       });
     });
 
-    it("stops with an error after repeated recoverable synthesis failures", async () => {
+    it("stops after repeated recoverable synthesis errors, leaving the banner to the synthesizer", async () => {
       const synth = mockSynthesizer();
       let errorMsg: string | null = null;
       synth.getError = () => errorMsg;
@@ -710,11 +710,11 @@ describe("createPlaybackEngine", () => {
         expect(e.getSnapshot().status).toBe("stopped");
       });
       expect(e.getSnapshot().currentBlock).toBe(3);
-      expect(e.getSnapshot().playbackError).toBe("Audio generation keeps failing");
+      // The unplayable-format banner must not fire for this
+      expect(e.getSnapshot().playbackError).toBeNull();
 
       // Pressing play again gets a fresh budget: blocks 3, 4, 5 fail before it stops again
       e.play();
-      expect(e.getSnapshot().playbackError).toBeNull();
       await vi.waitFor(() => {
         expect(e.getSnapshot().status).toBe("stopped");
       });

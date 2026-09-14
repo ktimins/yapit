@@ -52,6 +52,14 @@ export function createBrowserSynthesizer(): Synthesizer & {
         break;
       }
 
+      case "skipped": {
+        const req = pending.get(msg.requestId);
+        if (!req) break;
+        pending.delete(msg.requestId);
+        req.resolve(null);
+        break;
+      }
+
       case "error": {
         const req = pending.get(msg.requestId);
         if (!req) break;

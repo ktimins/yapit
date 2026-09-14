@@ -48,7 +48,10 @@ const BATCH_SIZE = 8;
 const REFILL_THRESHOLD = 8;
 const MIN_BUFFER_TO_START = 1;
 const EVICT_BEHIND = 32;
-/** A recoverable synthesis error skips the block; this many in a row means nothing will play. */
+/**
+ * A recoverable synthesis error skips the block; this many in a row means nothing will play.
+ * Synthesizers report unspeakable input as a skip, not an error, so only engine faults count.
+ */
 const MAX_CONSECUTIVE_SYNTHESIS_FAILURES = 3;
 
 // --- Variant key: `${blockIdx}:${model}:${voice}` ---
@@ -280,10 +283,10 @@ export function createPlaybackEngine(deps: PlaybackEngineDeps): PlaybackEngine {
         }
         // Skipping a failed block is right for one bad block. When every block fails
         // (browser TTS that can't run here), skipping would race silently through the
-        // whole document, saving a position the user never heard.
+        // whole document, saving a position the user never heard. The synthesizer's
+        // own error drives the banner (with the right recovery action), so none is set here.
         if (err && ++consecutiveSynthesisFailures >= MAX_CONSECUTIVE_SYNTHESIS_FAILURES) {
           console.error("[PlaybackEngine] Synthesis failed repeatedly, stopping:", err);
-          playbackError = "Audio generation keeps failing";
           engineStop();
           return;
         }
