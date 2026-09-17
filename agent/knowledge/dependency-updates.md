@@ -87,7 +87,7 @@ curl -s https://raw.githubusercontent.com/microsoft/playwright/v<tag>/packages/p
 
 `npm install --package-lock-only` only re-resolves deps whose lockfile entry falls outside the declared range — a caret dep sitting at a now-vulnerable version stays put. Raise the floor in `package.json` (or `npm update <pkg>`) and re-run `npm audit` to confirm.
 
-Verify all four extraction paths against the running container, not just one: static, static-bot (`github.com`), Playwright (a JS-rendered page — a Blogspot post works), and `html-direct` (POST `html` instead of `url`).
+Verify all four extraction paths against the running container, not just one: static, static-bot (`github.com`), Playwright (any `text/plain` URL, e.g. an RFC or a raw GitHub file — the static path rejects the content type, Chromium renders it), and `html-direct` (POST `html` instead of `url`).
 
 ## Adding New Dependencies
 
