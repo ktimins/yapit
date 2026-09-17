@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+* Security: updated the XML parser behind defuddle's MathML-to-LaTeX conversion (`@xmldom/xmldom` 0.9.10 → 0.9.12), which now runs on every extracted page carrying math. The old version parsed and serialized malformed input in quadratic time and accepted names that bypassed its well-formedness checks (GHSA-6mj3-qw4j-hgrw, GHSA-g53g-w8rj-fmg7, GHSA-93r5-fhx6-vmg9 among them).
+* Updated defuddle 0.19.3 → 0.19.4 — extracted web pages keep their punctuation where the site had it: no stray space before an em dash, a curly quote or an apostrophe, and none around subscripts, superscripts and inline code ("Popper's", "m³", "ViT-g₃₈₄"). Code blocks containing their own triple-backtick fences arrive intact instead of littered with backslashes, and content a site renders into a shadow root is now extracted instead of dropped.
+
 ## v0.4.6 — 2026-09-14
 
 * Fixed free PDF extraction taking minutes on scanned books (Internet Archive and similar): text extraction was decoding every page image only to discard it. A 420-page scan went from 312 s to under a second, and while it ran, every other request to the server was stalled with it. #95
